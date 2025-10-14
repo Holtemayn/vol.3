@@ -7,6 +7,7 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 
 from app.api.routes_forecast import router as forecast_router
+from app.api.routes_logs import router as logs_router
 from app.api.routes_planday import router as planday_router
 from app.api.routes_reconcile import router as reconcile_router
 from app.core.config import settings
@@ -16,6 +17,7 @@ app = FastAPI(title="CaféCaster v3")
 templates = Jinja2Templates(directory="app/ui/templates")
 
 app.include_router(forecast_router, prefix="/forecast", tags=["forecast"])
+app.include_router(logs_router, prefix="/logs", tags=["logs"])
 app.include_router(planday_router, prefix="/planday", tags=["planday"])
 app.include_router(reconcile_router, prefix="/reconcile", tags=["reconcile"])
 
@@ -46,6 +48,7 @@ def dashboard(request: Request):
             "avg_hourly_wage": settings.AVG_HOURLY_WAGE,
             "warnings": forecast.warnings,
             "items": items,
+            "log_path": settings.FORECAST_LOG_PATH,
         }
     except Exception as exc:  # pragma: no cover - vi viser fejl i UI
         payload = {
@@ -55,6 +58,7 @@ def dashboard(request: Request):
             "avg_hourly_wage": settings.AVG_HOURLY_WAGE,
             "warnings": [f"Dashboard kunne ikke hente forecast: {exc}"],
             "items": [],
+            "log_path": settings.FORECAST_LOG_PATH,
         }
     return templates.TemplateResponse(
         "dashboard.html",

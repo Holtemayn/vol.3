@@ -17,6 +17,7 @@ uvicorn main:app --reload
 - `POST /forecast` → beregner omsætning + anbefalet bemanding (regression fallback).
 - `GET  /planday/{date}` → henter planlagte timer (kræver Planday config).
 - `POST /reconcile` → skriver forecasts/afstemning til Google Sheet.
+- `GET  /logs` → JSON-overblik over de seneste forecast-logposter (Railway Postgres, falder tilbage til lokal fil under udvikling).
 - `GET  /chat/config` → flag til ChatKit (viser `ready=true` når `OPENAI_API_KEY` er sat).
 - `GET  /health` → simpel status.
 
@@ -34,7 +35,8 @@ Udfyld `.env` (se `.env.example`). På Railway sættes env vars i dashboardet.
 4. **Google Sheets**: Indsæt service account JSON (base64) i `GOOGLE_SHEETS_CREDENTIALS_JSON` og ark-id i `GOOGLE_SHEETS_SPREADSHEET_ID`.
 5. **ChatKit**: Når `OPENAI_API_KEY` er sat, kan du montere OpenAI ChatKit-klienten og bruge `/chat/config` til bootstrap.
 6. **Cron/Deployment**: Opret Railway Cron-job eller intern scheduler.
-7. **Tests**: Læg `pytest` og smoke-tests ind (feature-pipeline + endpoints).
+7. **Logging DB**: Peg `DATABASE_URL` på en Railway Postgres instans, så forecast-loggen overlever deploys (ellers uses lokal fil).
+8. **Tests**: Læg `pytest` og smoke-tests ind (feature-pipeline + endpoints).
 
 ## License
 MIT

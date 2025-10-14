@@ -23,6 +23,10 @@
         .controls .row { margin-bottom: 0.75rem; }
         .footer { margin: 4rem 0 2rem; text-align: center; color: #777; font-size: 0.9rem; }
         #chatkit-host { margin-top: 2rem; padding: 1.5rem; border: 2px dashed rgba(15,107,189,0.35); border-radius: 12px; text-align: center; background: rgba(15,107,189,0.05); }
+        .log-list { list-style: none; padding-left: 0; margin-top: 1rem; }
+        .log-list li { border-bottom: 1px solid #e5e5ea; padding: 0.75rem 0; }
+        .log-meta { font-size: 0.85rem; color: #555; display: flex; gap: 0.75rem; flex-wrap: wrap; }
+        .log-weather { margin-top: 0.5rem; font-size: 0.85rem; color: #333; }
     </style>
 </head>
 <body>
@@ -92,6 +96,25 @@
             </div>
         </section>
 
+        <section class="panel" id="log-panel">
+            <div class="row">
+                <div class="six columns">
+                    <h4>Forecast log</h4>
+                    <p>Seneste poster gemt i <code>{{ initial.get('log_path', './logs/forecast.log') }}</code></p>
+                </div>
+                <div class="six columns" style="text-align:right;">
+                    <label for="log-limit">Poster</label>
+                    <select id="log-limit" style="margin-right:0.5rem;">
+                        <option value="5" selected>5</option>
+                        <option value="10">10</option>
+                        <option value="20">20</option>
+                    </select>
+                    <button id="refresh-log" class="button">Opdatér log</button>
+                </div>
+            </div>
+            <ul id="log-entries" class="log-list"></ul>
+        </section>
+
         <section id="chatkit-host" data-config-url="/chat/config" data-openai-ready="{{ 'true' if openai_ready else 'false' }}">
             {% if openai_ready %}
                 <p>OpenAI API-nøgle er sat. ChatKit kan monteres ved at loade pakken og læse <code>data-config-url</code>.</p>
@@ -146,6 +169,48 @@
             renderWarnings(payload.warnings);
         }
 
+        function renderLogs(payload) {
+            const list = document.getElementById("log-entries");
+            list.innerHTML = "";
+            const items = (payload && payload.items) || [];
+            if (!items.length) {
+                const li = document.createElement("li");
+                li.textContent = "Ingen logposter endnu.";
+                list.appendChild(li);
+                return;
+            }
+            items.forEach(entry => {
+                const li = document.createElement("li");
+                const heuristics = entry.rows && entry.rows.length ? entry.rows[0] : null;
+                const weather = entry.weather && entry.weather.length ? entry.weather[0] : null;
+                li.innerHTML = `
+                    <strong>${entry.forecast_date}</strong>
+                    <div class="log-meta">
+                        <span>Horisont: ${entry.horizon_days} dage</span>
+                        <span>Model: ${entry.model_backend}</span>
+                        <span>Warnings: ${entry.warnings?.length || 0}</span>
+                    </div>
+                    ${heuristics ? `<div class="log-meta">Omsætning dag 1: ${formatNumber(heuristics.revenue_pred)} kr · Timer: ${formatNumber(heuristics.hours_recommended)}</div>` : ""}
+                    ${weather ? `<div class="log-weather">Vejr dag 1: ${formatNumber(weather.temp_max)} °C, ${formatNumber(weather.precip_sum || 0)} mm, ${formatNumber(weather.sunshine_hours || 0)} t sol</div>` : ""}
+                `;
+                list.appendChild(li);
+            });
+        }
+
+        async function loadLogs() {
+            const limit = Number(document.getElementById("log-limit").value);
+            try {
+                const response = await fetch(`/logs?limit=${limit}`);
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+                const data = await response.json();
+                renderLogs(data);
+            } catch (error) {
+                renderWarnings([`Kunne ikke hente log: ${error.message}`]);
+            }
+        }
+
         async function submitForm(event) {
             event.preventDefault();
             const form = event.target;
@@ -173,6 +238,7 @@
                 }
                 const data = await response.json();
                 renderTable(data);
+                loadLogs();
             } catch (error) {
                 renderWarnings([`Kunne ikke hente forecast: ${error.message}`]);
             } finally {
@@ -182,7 +248,10 @@
         }
 
         document.getElementById("forecast-form").addEventListener("submit", submitForm);
+        document.getElementById("refresh-log").addEventListener("click", () => loadLogs());
+        document.getElementById("log-limit").addEventListener("change", () => loadLogs());
         renderTable({{ initial | tojson }});
+        loadLogs();
     </script>
 </body>
 </html>

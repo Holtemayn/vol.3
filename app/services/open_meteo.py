@@ -8,8 +8,12 @@ import requests
 from app.core.config import settings
 
 DAILY_FIELDS = "temperature_2m_max,temperature_2m_min,precipitation_sum,wind_speed_10m_max,sunshine_duration"
+HOURLY_FIELDS = "precipitation"
 RAIN_BINS = [-0.1, 0.1, 1, 4, 10, 20, 1_000]
 RAIN_LABELS = ["0", "0.1-1", "1.1-4", "4.1-10", "10.1-20", "20+"]
+
+OPENING_HOUR_START = 8
+OPENING_HOUR_END = 22
 
 
 def fetch_weather(
@@ -31,6 +35,7 @@ def fetch_weather(
         "latitude": lat,
         "longitude": lon,
         "daily": DAILY_FIELDS,
+        "hourly": HOURLY_FIELDS,
         "timezone": settings.WEATHER_TIMEZONE,
     }
     if start_date and end_date:
@@ -45,6 +50,8 @@ def fetch_weather(
     daily = payload.get("daily")
     if not daily:
         raise ValueError("Open-Meteo svarede uden 'daily'")
+
+    hourly = payload.get("hourly") or {}
 
     df = pd.DataFrame(daily).copy()
     if df.empty:
@@ -66,4 +73,20 @@ def fetch_weather(
     df["weekday"] = df["time"].dt.weekday + 1
     df["year"] = df["time"].dt.year
     df["rain_group"] = pd.cut(df["precip_sum"], bins=RAIN_BINS, labels=RAIN_LABELS)
+
+    if hourly:
+        hourly_df = pd.DataFrame(hourly).copy()
+        if not hourly_df.empty and "precipitation" in hourly_df:
+            times = pd.to_datetime(hourly_df["time"])
+            if getattr(times.dt, "tz", None) is not None:
+                times = times.dt.tz_convert(settings.WEATHER_TIMEZONE).dt.tz_localize(None)
+            hourly_df["time"] = times
+            hourly_df["date"] = hourly_df["time"].dt.normalize()
+            hourly_df["hour"] = hourly_df["time"].dt.hour
+            mask = hourly_df["hour"].between(OPENING_HOUR_START, OPENING_HOUR_END)
+            filtered = hourly_df.loc[mask]
+            if not filtered.empty:
+                daily_precip = filtered.groupby("date", as_index=True)["precipitation"].sum()
+                df["precip_sum"] = df["date"].map(daily_precip).fillna(df["precip_sum"])
+
     return df

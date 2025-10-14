@@ -10,6 +10,7 @@ from app.core.config import settings
 from app.ml.features import build_feature_frame
 from app.ml.model_loader import get_model
 from app.ml.regression import predict_regression
+from app.services.forecast_log import log_forecast_event
 from app.services.planday import get_last_planday_warning, get_planday_hours_for_dates
 from app.services.weather import get_last_weather_warning, get_weather_df
 
@@ -91,12 +92,25 @@ def generate_forecast(
     if planday_warning:
         warnings.append(planday_warning)
 
-    return ForecastResult(
+    result = ForecastResult(
         model_version=settings.MODEL_VERSION,
         model_backend=backend_used,
         rows=rows,
         warnings=warnings,
     )
+
+    # Log forecast + tilhørende vejrdata. Fejler logningen, fortsætter vi alligevel.
+    try:
+        log_forecast_event(
+            start_date=start_date,
+            horizon_days=horizon_days,
+            result=result,
+            weather_frame=weather_payload.frame,
+        )
+    except Exception:
+        pass
+
+    return result
 
 
 def _predict(feature_frame: pd.DataFrame) -> tuple[pd.DataFrame, str, List[str]]:

@@ -49,6 +49,7 @@ class Settings(BaseSettings):
     # Misc / future extensions
     DATABASE_URL: str | None = Field(default=None)
     OPENAI_API_KEY: str | None = None
+    FORECAST_LOG_PATH: str = "./logs/forecast.log"
 
     model_config = SettingsConfigDict(env_file=".env", extra="allow")
 
