@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date
-from typing import Iterable
+from datetime import date, datetime
+from typing import Dict, Iterable
 
 import pandas as pd
 
@@ -10,6 +10,8 @@ from app.core.config import settings
 from app.services.open_meteo import fetch_weather as fetch_open_meteo
 
 _LAST_WARNING: str | None = None
+_CACHE: Dict[tuple[date, date], tuple[datetime, pd.DataFrame]] = {}
+_CACHE_TTL_SECONDS = 3600
 
 
 @dataclass
@@ -31,12 +33,20 @@ def get_weather_df(dates: Iterable[date]) -> WeatherPayload:
 
     start = min(dates)
     end = max(dates)
+    cache_key = (start, end)
+    now = datetime.utcnow()
+    cached = _CACHE.get(cache_key)
+    if cached and (now - cached[0]).total_seconds() < _CACHE_TTL_SECONDS:
+        frame = cached[1]
+        frame = frame[frame["date"].dt.date.isin({d for d in dates})].reset_index(drop=True)
+        return WeatherPayload(frame)
     try:
         frame = _fetch_daily_range(start, end)
         frame = frame[frame["date"].dt.date.isin({d for d in dates})].reset_index(drop=True)
         if frame.empty:
             raise ValueError("Open-Meteo returnerede ingen rækker")
         _set_warning(None)
+        _CACHE[cache_key] = (now, frame)
         return WeatherPayload(frame)
     except Exception as exc:  # pragma: no cover - netværks-/API-fejl
         _set_warning(f"Open-Meteo fallback: {exc}")
