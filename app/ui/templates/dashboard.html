@@ -289,10 +289,34 @@
                             placeholder: "Spørg fx: Hvordan planlægger vi weekenden?",
                         },
                         async fetchChatCompletions({ messages }) {
+                            const normalized = (messages || []).map((message) => {
+                                if (!message || !message.content) {
+                                    return { role: message.role, content: "" };
+                                }
+                                const parts = Array.isArray(message.content)
+                                    ? message.content
+                                    : [{ type: "text", text: String(message.content) }];
+                                const text = parts
+                                    .map((part) => {
+                                        if (!part) return "";
+                                        if (typeof part === "string") return part;
+                                        if (part.text) return part.text;
+                                        if (part.input_text) return part.input_text;
+                                        return "";
+                                    })
+                                    .filter(Boolean)
+                                    .join("\n")
+                                    .trim();
+                                return {
+                                    role: message.role,
+                                    content: text,
+                                };
+                            });
+
                             const response = await fetch("/chat", {
                                 method: "POST",
                                 headers: { "Content-Type": "application/json" },
-                                body: JSON.stringify({ messages }),
+                                body: JSON.stringify({ messages: normalized }),
                             });
                             if (!response.ok) {
                                 throw new Error(await response.text());
@@ -308,7 +332,12 @@
                                         index: 0,
                                         message: {
                                             role: "assistant",
-                                            content: data.reply,
+                                            content: [
+                                                {
+                                                    type: "text",
+                                                    text: data.reply,
+                                                },
+                                            ],
                                         },
                                         finish_reason: "stop",
                                     },
