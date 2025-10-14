@@ -1,0 +1,6 @@
+
+[build]
+builder = "Docker"
+
+[env]
+PORT = "8000"

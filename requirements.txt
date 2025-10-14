@@ -1,0 +1,17 @@
+
+fastapi
+uvicorn[standard]
+pydantic
+pydantic-settings
+pandas
+joblib
+xgboost
+python-dotenv
+requests
+jinja2
+# DB (valgfrit nu, klar til senere)
+SQLAlchemy
+psycopg2-binary
+# Google Sheets
+gspread
+google-auth

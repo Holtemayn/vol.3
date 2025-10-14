@@ -1,0 +1,188 @@
+{% set initial = initial_forecast %}
+<!DOCTYPE html>
+<html lang="da">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>CaféCaster v3</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/normalize/8.0.1/normalize.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/skeleton/2.0.4/skeleton.min.css">
+    <style>
+        body { background: #f7f7f7; color: #222; }
+        header { margin: 3rem 0 2rem; }
+        .badge { display: inline-block; padding: 0.25rem 0.75rem; border-radius: 999px; background: #0F6CBD; color: #fff; font-size: 0.8rem; }
+        .panel { background: #fff; border-radius: 12px; padding: 2rem; box-shadow: 0 16px 40px rgba(15,107,189,0.08); margin-bottom: 2rem; }
+        .table-wrapper { overflow-x: auto; }
+        table { width: 100%; border-collapse: collapse; margin-top: 1rem; }
+        th, td { padding: 0.75rem; border-bottom: 1px solid #e5e5ea; text-align: left; }
+        th { background: linear-gradient(90deg, rgba(15,107,189,0.12), rgba(15,107,189,0.02)); font-weight: 600; }
+        tr:hover { background: rgba(15,107,189,0.04); }
+        .diff-positive { color: #b91c1c; font-weight: 600; }
+        .diff-negative { color: #0f766e; font-weight: 600; }
+        .warning { background: rgba(234,179,8,0.16); border-left: 4px solid #facc15; padding: 0.75rem 1rem; border-radius: 6px; margin-bottom: 0.75rem; }
+        .controls .row { margin-bottom: 0.75rem; }
+        .footer { margin: 4rem 0 2rem; text-align: center; color: #777; font-size: 0.9rem; }
+        #chatkit-host { margin-top: 2rem; padding: 1.5rem; border: 2px dashed rgba(15,107,189,0.35); border-radius: 12px; text-align: center; background: rgba(15,107,189,0.05); }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <span class="badge">CaféCaster · FastAPI</span>
+            <h2>Forecast for omsætning & bemanding</h2>
+            <p>Vol.2 logikken er migreret til v3 motoren. Du kan regulere horizon, timeløn og lønandelen direkte her.</p>
+        </header>
+
+        <section class="panel controls">
+            <h4>Scenario</h4>
+            <form id="forecast-form">
+                <div class="row">
+                    <div class="six columns">
+                        <label for="start-date">Startdato</label>
+                        <input id="start-date" name="start_date" type="date" value="{{ default_start }}" required>
+                    </div>
+                    <div class="three columns">
+                        <label for="horizon">Horisont (dage)</label>
+                        <input id="horizon" name="horizon_days" type="number" min="1" max="14" value="{{ default_horizon }}" required>
+                    </div>
+                    <div class="three columns">
+                        <label for="wage-pct">Løndel (%)</label>
+                        <input id="wage-pct" name="wage_pct" type="number" step="0.01" min="0" max="1" value="{{ initial.wage_pct }}">
+                    </div>
+                </div>
+                <div class="row">
+                    <div class="six columns">
+                        <label for="hourly">Gns. timeløn (kr)</label>
+                        <input id="hourly" name="avg_hourly_wage" type="number" min="1" value="{{ initial.avg_hourly_wage }}">
+                    </div>
+                    <div class="six columns u-pull-right" style="text-align:right;margin-top:1.9rem;">
+                        <button type="submit" class="button-primary">Opdatér forecast</button>
+                    </div>
+                </div>
+            </form>
+            <div id="warning-stack"></div>
+        </section>
+
+        <section class="panel">
+            <div class="row">
+                <div class="six columns">
+                    <h4>Omsætning & timer</h4>
+                    <p id="model-meta">Model: {{ initial.model_backend }} · version {{ initial.model_version }}</p>
+                </div>
+                <div class="six columns" style="text-align:right;">
+                    <small>Løndel {{ (initial.wage_pct * 100) | round(1) }}% · Timeløn {{ initial.avg_hourly_wage | round(2) }} kr</small>
+                </div>
+            </div>
+            <div class="table-wrapper">
+                <table id="forecast-table">
+                    <thead>
+                        <tr>
+                            <th>Dato</th>
+                            <th>Omsætning (kr)</th>
+                            <th>Anbefalet timer</th>
+                            <th>Planday timer</th>
+                            <th>Afvigelse</th>
+                            <th>☀️ Sol</th>
+                            <th>🌧️ Nedbør</th>
+                            <th>🌡️ Temp</th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                </table>
+            </div>
+        </section>
+
+        <section id="chatkit-host" data-config-url="/chat/config" data-openai-ready="{{ 'true' if openai_ready else 'false' }}">
+            {% if openai_ready %}
+                <p>OpenAI API-nøgle er sat. ChatKit kan monteres ved at loade pakken og læse <code>data-config-url</code>.</p>
+            {% else %}
+                <p>Chat-widget placeholder. Når du tilføjer din OpenAI-nøgle, vil <code>/chat/config</code> returnere <code>ready=true</code>.</p>
+            {% endif %}
+        </section>
+
+        <footer class="footer">
+            Bygget med FastAPI + Skeleton CSS. Klar til Railway & ChatKit.
+        </footer>
+    </div>
+
+    <script>
+        const tableBody = document.querySelector("#forecast-table tbody");
+        const warningStack = document.getElementById("warning-stack");
+        const modelMeta = document.getElementById("model-meta");
+
+        function formatNumber(value) {
+            return new Intl.NumberFormat("da-DK", { maximumFractionDigits: 1 }).format(value);
+        }
+
+        function renderWarnings(warnings) {
+            warningStack.innerHTML = "";
+            (warnings || []).forEach(msg => {
+                const div = document.createElement("div");
+                div.className = "warning";
+                div.textContent = msg;
+                warningStack.appendChild(div);
+            });
+        }
+
+        function renderTable(payload) {
+            const { items = [] } = payload;
+            tableBody.innerHTML = "";
+            items.forEach(item => {
+                const tr = document.createElement("tr");
+                const diffClass = item.hours_diff > 1 ? "diff-positive" : item.hours_diff < -1 ? "diff-negative" : "";
+                tr.innerHTML = `
+                    <td>${new Date(item.date).toLocaleDateString("da-DK", { weekday: "short", day: "numeric", month: "short" })}</td>
+                    <td>${formatNumber(item.revenue_pred)}</td>
+                    <td>${formatNumber(item.hours_recommended)}</td>
+                    <td>${item.planday_hours != null ? formatNumber(item.planday_hours) : "—"}</td>
+                    <td class="${diffClass}">${item.hours_diff != null ? formatNumber(item.hours_diff) : "—"}</td>
+                    <td>${item.sunshine_hours != null ? formatNumber(item.sunshine_hours) + " t" : "—"}</td>
+                    <td>${item.precip_sum != null ? formatNumber(item.precip_sum) + " mm" : "—"}</td>
+                    <td>${item.temp_max != null ? formatNumber(item.temp_max) + " °C" : "—"}</td>
+                `;
+                tableBody.appendChild(tr);
+            });
+            modelMeta.textContent = `Model: ${payload.model_backend} · version ${payload.model_version}`;
+            renderWarnings(payload.warnings);
+        }
+
+        async function submitForm(event) {
+            event.preventDefault();
+            const form = event.target;
+            const payload = {
+                start_date: form.start_date.value,
+                horizon_days: Number(form.horizon_days.value),
+                wage_pct: form.wage_pct.value ? Number(form.wage_pct.value) : null,
+                avg_hourly_wage: form.avg_hourly_wage.value ? Number(form.avg_hourly_wage.value) : null,
+            };
+
+            const button = form.querySelector("button[type=submit]");
+            const originalLabel = button.textContent;
+            button.textContent = "Henter...";
+            button.disabled = true;
+
+            try {
+                const response = await fetch("/forecast", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(payload),
+                });
+                if (!response.ok) {
+                    const text = await response.text();
+                    throw new Error(text || `HTTP ${response.status}`);
+                }
+                const data = await response.json();
+                renderTable(data);
+            } catch (error) {
+                renderWarnings([`Kunne ikke hente forecast: ${error.message}`]);
+            } finally {
+                button.textContent = originalLabel;
+                button.disabled = false;
+            }
+        }
+
+        document.getElementById("forecast-form").addEventListener("submit", submitForm);
+        renderTable({{ initial | tojson }});
+    </script>
+</body>
+</html>
