@@ -93,7 +93,8 @@
                             <th>Omsætning (kr)</th>
                             <th>Anbefalet timer</th>
                             <th>Planday timer</th>
-                            <th>Afvigelse</th>
+                    <th>Afvigelse</th>
+                    <th>P-løn %</th>
                             <th>☀️ Sol</th>
                             <th>🌧️ Nedbør</th>
                             <th>🌡️ Temp</th>
@@ -171,6 +172,9 @@
             items.forEach(item => {
                 const tr = document.createElement("tr");
                 const diffClass = item.hours_diff > 1 ? "diff-positive" : item.hours_diff < -1 ? "diff-negative" : "";
+                const wagePct = item.planday_hours != null && item.revenue_pred
+                    ? (item.planday_hours * payload.avg_hourly_wage / item.revenue_pred) * 100
+                    : null;
                 tr.innerHTML = `
                     <td>${new Date(item.date).toLocaleDateString("da-DK", { weekday: "short", day: "numeric", month: "short" })}</td>
                     <td>${formatCurrency(item.revenue_pred)}</td>
@@ -180,6 +184,7 @@
                     <td>${item.sunshine_hours != null ? formatNumber(item.sunshine_hours) + " t" : "—"}</td>
                     <td>${item.precip_sum != null ? formatNumber(item.precip_sum) + " mm" : "—"}</td>
                     <td>${item.temp_max != null ? formatNumber(item.temp_max) + " °C" : "—"}</td>
+                    <td>${wagePct != null ? formatNumber(wagePct) + " %" : "—"}</td>
                 `;
                 tableBody.appendChild(tr);
             });
