@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pandas as pd
 
-from models.regression import predict_revenue as vol2_predict
+from app.models.regression import predict_revenue as vol2_predict
 
 
 def predict_regression(features: pd.DataFrame) -> pd.DataFrame:

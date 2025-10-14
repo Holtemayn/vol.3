@@ -4,3 +4,4 @@ builder = "dockerfile"
 
 [env]
 PORT = "8000"
+PYTHONPATH = "/app"
