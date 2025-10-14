@@ -90,11 +90,11 @@
                     <thead>
                         <tr>
                             <th>Dato</th>
-                            <th>Omsætning (kr)</th>
-                            <th>Anbefalet timer</th>
-                            <th>Planday timer</th>
-                    <th>Afvigelse</th>
-                    <th>P-løn %</th>
+                            <th>Oms</th>
+                            <th>An. timer</th>
+                            <th>Planday</th>
+                            <th>Afvigelse</th>
+                            <th>P-løn %</th>
                             <th>☀️ Sol</th>
                             <th>🌧️ Nedbør</th>
                             <th>🌡️ Temp</th>
@@ -181,10 +181,10 @@
                     <td>${formatNumber(item.hours_recommended)}</td>
                     <td>${item.planday_hours != null ? formatNumber(item.planday_hours) : "—"}</td>
                     <td class="${diffClass}">${item.hours_diff != null ? formatNumber(item.hours_diff) : "—"}</td>
+                    <td>${wagePct != null ? formatNumber(wagePct) + " %" : "—"}</td>
                     <td>${item.sunshine_hours != null ? formatNumber(item.sunshine_hours) + " t" : "—"}</td>
                     <td>${item.precip_sum != null ? formatNumber(item.precip_sum) + " mm" : "—"}</td>
                     <td>${item.temp_max != null ? formatNumber(item.temp_max) + " °C" : "—"}</td>
-                    <td>${wagePct != null ? formatNumber(wagePct) + " %" : "—"}</td>
                 `;
                 tableBody.appendChild(tr);
             });
