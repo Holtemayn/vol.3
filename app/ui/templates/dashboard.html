@@ -74,7 +74,7 @@
             <div id="warning-stack"></div>
         </section>
 
-        <section class="panel">
+        <section class="panel" id="manual-chat-panel">
             <div class="row">
                 <div class="six columns">
                     <h4>Omsætning & timer</h4>
@@ -340,6 +340,7 @@
             import("https://cdn.jsdelivr.net/npm/@openai/chat-components@0.2.2/+esm")
                 .then((mod) => {
                     if (mod && mod.ChatKit) {
+                        chatKitHost.innerHTML = "";
                         mod.ChatKit.mount({
                             element: chatKitHost,
                             configUrl,
@@ -357,6 +358,10 @@
                             },
                         });
                         chatKitHost.classList.remove("placeholder");
+                        const manualPanel = document.getElementById("manual-chat-panel");
+                        if (manualPanel) {
+                            manualPanel.style.display = "none";
+                        }
                     }
                 })
                 .catch((error) => {
