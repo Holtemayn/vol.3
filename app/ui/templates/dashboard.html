@@ -137,6 +137,10 @@
             return new Intl.NumberFormat("da-DK", { maximumFractionDigits: 1 }).format(value);
         }
 
+        function formatCurrency(value) {
+            return new Intl.NumberFormat("da-DK", { maximumFractionDigits: 0 }).format(value);
+        }
+
         function renderWarnings(warnings) {
             warningStack.innerHTML = "";
             (warnings || []).forEach(msg => {
@@ -155,7 +159,7 @@
                 const diffClass = item.hours_diff > 1 ? "diff-positive" : item.hours_diff < -1 ? "diff-negative" : "";
                 tr.innerHTML = `
                     <td>${new Date(item.date).toLocaleDateString("da-DK", { weekday: "short", day: "numeric", month: "short" })}</td>
-                    <td>${formatNumber(item.revenue_pred)}</td>
+                    <td>${formatCurrency(item.revenue_pred)}</td>
                     <td>${formatNumber(item.hours_recommended)}</td>
                     <td>${item.planday_hours != null ? formatNumber(item.planday_hours) : "—"}</td>
                     <td class="${diffClass}">${item.hours_diff != null ? formatNumber(item.hours_diff) : "—"}</td>
@@ -190,7 +194,7 @@
                         <span>Model: ${entry.model_backend}</span>
                         <span>Warnings: ${entry.warnings?.length || 0}</span>
                     </div>
-                    ${heuristics ? `<div class="log-meta">Omsætning dag 1: ${formatNumber(heuristics.revenue_pred)} kr · Timer: ${formatNumber(heuristics.hours_recommended)}</div>` : ""}
+                    ${heuristics ? `<div class="log-meta">Omsætning dag 1: ${formatCurrency(heuristics.revenue_pred)} kr · Timer: ${formatNumber(heuristics.hours_recommended)}</div>` : ""}
                     ${weather ? `<div class="log-weather">Vejr dag 1: ${formatNumber(weather.temp_max)} °C, ${formatNumber(weather.precip_sum || 0)} mm, ${formatNumber(weather.sunshine_hours || 0)} t sol</div>` : ""}
                 `;
                 list.appendChild(li);
