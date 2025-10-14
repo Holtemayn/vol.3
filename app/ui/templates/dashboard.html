@@ -27,6 +27,13 @@
         .log-list li { border-bottom: 1px solid #e5e5ea; padding: 0.75rem 0; }
         .log-meta { font-size: 0.85rem; color: #555; display: flex; gap: 0.75rem; flex-wrap: wrap; }
         .log-weather { margin-top: 0.5rem; font-size: 0.85rem; color: #333; }
+        .chat-window { border: 1px solid #e5e5ea; border-radius: 8px; padding: 1rem; max-height: 320px; overflow-y: auto; background: #fafafa; }
+        .chat-message { margin-bottom: 0.75rem; }
+        .chat-message.user { text-align: right; }
+        .chat-message.assistant { text-align: left; }
+        .chat-message .bubble { display: inline-block; padding: 0.6rem 0.9rem; border-radius: 12px; max-width: 85%; }
+        .chat-message.user .bubble { background: #0F6CBD; color: #fff; }
+        .chat-message.assistant .bubble { background: #fff; border: 1px solid #d1d1d6; }
     </style>
 </head>
 <body>
@@ -113,6 +120,26 @@
                 </div>
             </div>
             <ul id="log-entries" class="log-list"></ul>
+        </section>
+
+        <section class="panel">
+            <div class="row">
+                <div class="six columns">
+                    <h4>Café-rådgiver</h4>
+                    <p>Stil spørgsmål om bemanding og drift – svar leveres af OpenAI.</p>
+                </div>
+            </div>
+            <div class="chat-window" id="chat-window"></div>
+            <form id="chat-form" style="margin-top:1rem;">
+                <div class="row">
+                    <div class="nine columns">
+                        <textarea id="chat-input" placeholder="Spørg fx: Hvordan bør vi planlægge weekendteamet?" style="width:100%; height:80px;"></textarea>
+                    </div>
+                    <div class="three columns" style="margin-top:1.25rem; text-align:right;">
+                        <button type="submit" class="button-primary">Send</button>
+                    </div>
+                </div>
+            </form>
         </section>
 
         <section id="chatkit-host" data-config-url="/chat/config" data-openai-ready="{{ 'true' if openai_ready else 'false' }}">
@@ -254,8 +281,58 @@
         document.getElementById("forecast-form").addEventListener("submit", submitForm);
         document.getElementById("refresh-log").addEventListener("click", () => loadLogs());
         document.getElementById("log-limit").addEventListener("change", () => loadLogs());
+
+        const conversation = [];
+
+        function renderChat() {
+            const windowEl = document.getElementById("chat-window");
+            if (!windowEl) {
+                return;
+            }
+            windowEl.innerHTML = "";
+            conversation.forEach(entry => {
+                const div = document.createElement("div");
+                div.className = `chat-message ${entry.role}`;
+                div.innerHTML = `<div class="bubble">${entry.content}</div>`;
+                windowEl.appendChild(div);
+            });
+            windowEl.scrollTop = windowEl.scrollHeight;
+        }
+
+        const chatForm = document.getElementById("chat-form");
+        if (chatForm) {
+            chatForm.addEventListener("submit", async (event) => {
+                event.preventDefault();
+                const input = document.getElementById("chat-input");
+                const text = input.value.trim();
+                if (!text) {
+                    return;
+                }
+                input.value = "";
+                conversation.push({ role: "user", content: text });
+                renderChat();
+                try {
+                    const response = await fetch("/chat", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ messages: conversation }),
+                    });
+                    if (!response.ok) {
+                        const text = await response.text();
+                        throw new Error(text || `HTTP ${response.status}`);
+                    }
+                    const data = await response.json();
+                    conversation.push({ role: "assistant", content: data.reply });
+                    renderChat();
+                } catch (error) {
+                    renderWarnings([`Kunne ikke hente svar fra chatbot: ${error.message}`]);
+                }
+            });
+        }
+
         renderTable({{ initial | tojson }});
         loadLogs();
+        renderChat();
     </script>
 </body>
 </html>

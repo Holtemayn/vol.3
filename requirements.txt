@@ -9,6 +9,7 @@ xgboost
 python-dotenv
 requests
 jinja2
+openai
 # DB (valgfrit nu, klar til senere)
 SQLAlchemy
 psycopg2-binary

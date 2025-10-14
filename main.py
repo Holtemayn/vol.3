@@ -6,6 +6,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 
+from app.api.routes_chat import router as chat_router
 from app.api.routes_forecast import router as forecast_router
 from app.api.routes_logs import router as logs_router
 from app.api.routes_planday import router as planday_router
@@ -20,6 +21,7 @@ app.include_router(forecast_router, prefix="/forecast", tags=["forecast"])
 app.include_router(logs_router, prefix="/logs", tags=["logs"])
 app.include_router(planday_router, prefix="/planday", tags=["planday"])
 app.include_router(reconcile_router, prefix="/reconcile", tags=["reconcile"])
+app.include_router(chat_router, prefix="/chat", tags=["chat"])
 
 
 @app.get("/", response_class=HTMLResponse)
