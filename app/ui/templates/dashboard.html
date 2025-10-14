@@ -129,25 +129,11 @@
                     <p>Stil spørgsmål om bemanding og drift – svar leveres af OpenAI.</p>
                 </div>
             </div>
-            <div class="chat-window" id="chat-window"></div>
-            <form id="chat-form" style="margin-top:1rem;">
-                <div class="row">
-                    <div class="nine columns">
-                        <textarea id="chat-input" placeholder="Spørg fx: Hvordan bør vi planlægge weekendteamet?" style="width:100%; height:80px;"></textarea>
-                    </div>
-                    <div class="three columns" style="margin-top:1.25rem; text-align:right;">
-                        <button type="submit" class="button-primary">Send</button>
-                    </div>
-                </div>
-            </form>
-        </section>
-
-        <section id="chatkit-host" data-config-url="/chat/config" data-openai-ready="{{ 'true' if openai_ready else 'false' }}">
-            {% if openai_ready %}
-                <p>OpenAI API-nøgle er sat. ChatKit kan monteres ved at loade pakken og læse <code>data-config-url</code>.</p>
-            {% else %}
-                <p>Chat-widget placeholder. Når du tilføjer din OpenAI-nøgle, vil <code>/chat/config</code> returnere <code>ready=true</code>.</p>
-            {% endif %}
+            <div id="chatkit-host" data-config-url="/chat/config" data-openai-ready="{{ 'true' if openai_ready else 'false' }}">
+                {% if not openai_ready %}
+                    <p>Chat-widget placeholder. Når du tilføjer din OpenAI-nøgle, vil <code>/chat/config</code> returnere <code>ready=true</code>.</p>
+                {% endif %}
+            </div>
         </section>
 
         <footer class="footer">
@@ -282,57 +268,8 @@
         document.getElementById("refresh-log").addEventListener("click", () => loadLogs());
         document.getElementById("log-limit").addEventListener("change", () => loadLogs());
 
-        const conversation = [];
-
-        function renderChat() {
-            const windowEl = document.getElementById("chat-window");
-            if (!windowEl) {
-                return;
-            }
-            windowEl.innerHTML = "";
-            conversation.forEach(entry => {
-                const div = document.createElement("div");
-                div.className = `chat-message ${entry.role}`;
-                div.innerHTML = `<div class="bubble">${entry.content}</div>`;
-                windowEl.appendChild(div);
-            });
-            windowEl.scrollTop = windowEl.scrollHeight;
-        }
-
-        const chatForm = document.getElementById("chat-form");
-        if (chatForm) {
-            chatForm.addEventListener("submit", async (event) => {
-                event.preventDefault();
-                const input = document.getElementById("chat-input");
-                const text = input.value.trim();
-                if (!text) {
-                    return;
-                }
-                input.value = "";
-                conversation.push({ role: "user", content: text });
-                renderChat();
-                try {
-                    const response = await fetch("/chat", {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ messages: conversation }),
-                    });
-                    if (!response.ok) {
-                        const text = await response.text();
-                        throw new Error(text || `HTTP ${response.status}`);
-                    }
-                    const data = await response.json();
-                    conversation.push({ role: "assistant", content: data.reply });
-                    renderChat();
-                } catch (error) {
-                    renderWarnings([`Kunne ikke hente svar fra chatbot: ${error.message}`]);
-                }
-            });
-        }
-
         renderTable({{ initial | tojson }});
         loadLogs();
-        renderChat();
 
         const chatKitHost = document.getElementById("chatkit-host");
         if (chatKitHost && chatKitHost.dataset.openaiReady === "true") {
