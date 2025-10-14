@@ -1,6 +1,6 @@
 
 [build]
-builder = "Docker"
+builder = "dockerfile"
 
 [env]
 PORT = "8000"
