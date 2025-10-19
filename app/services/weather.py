@@ -7,10 +7,14 @@ from typing import Dict, Iterable
 import pandas as pd
 
 from app.core.config import settings
-from app.services.open_meteo import fetch_weather as fetch_open_meteo
+from app.services.open_meteo import (
+    fetch_historic_weather as fetch_open_meteo_historic,
+    fetch_weather as fetch_open_meteo,
+)
 
 _LAST_WARNING: str | None = None
 _CACHE: Dict[tuple[date, date], tuple[datetime, pd.DataFrame]] = {}
+_HISTORIC_CACHE: Dict[tuple[date, date], tuple[datetime, pd.DataFrame]] = {}
 _CACHE_TTL_SECONDS = 3600
 
 
@@ -107,3 +111,36 @@ def _set_warning(message: str | None) -> None:
 
 def get_last_weather_warning() -> str | None:
     return _LAST_WARNING
+
+
+def get_historic_weather_map(dates: Iterable[date]) -> dict[date, dict[str, float]]:
+    dates = list(dates)
+    if not dates:
+        return {}
+
+    start = min(dates)
+    end = max(dates)
+    cache_key = (start, end)
+    now = datetime.utcnow()
+    cached = _HISTORIC_CACHE.get(cache_key)
+    if cached and (now - cached[0]).total_seconds() < _CACHE_TTL_SECONDS:
+        frame = cached[1]
+    else:
+        try:
+            frame = fetch_open_meteo_historic(start, end)
+        except Exception:
+            return {}
+        frame = frame[frame["date"].dt.date.isin({d for d in dates})].reset_index(drop=True)
+        _HISTORIC_CACHE[cache_key] = (now, frame)
+
+    result: dict[date, dict[str, float]] = {}
+    for row in frame.itertuples(index=False):
+        dt = row.date.date()
+        result[dt] = {
+            "temp_max": float(row.temp_max) if row.temp_max is not None else None,
+            "temp_min": float(row.temp_min) if row.temp_min is not None else None,
+            "precip_sum": float(row.precip_sum) if row.precip_sum is not None else None,
+            "wind_max": float(row.wind_max) if row.wind_max is not None else None,
+            "sunshine_hours": float(row.sunshine_hours) if row.sunshine_hours is not None else None,
+        }
+    return result

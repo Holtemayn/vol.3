@@ -215,11 +215,19 @@
                 details.className = "log-entry";
                 const firstRow = entry.rows && entry.rows.length ? entry.rows[0] : null;
                 const weather = entry.weather && entry.weather.length ? entry.weather[0] : null;
-                const actualIntro = firstRow && firstRow.revenue_actual != null ? ` · Planday: ${formatCurrency(firstRow.revenue_actual)} kr` : "";
+                const plandayActual = firstRow && firstRow.revenue_actual != null ? `${formatCurrency(firstRow.revenue_actual)} kr` : "—";
+                const summaryText = `${entry.forecast_date} · Planday oms: ${plandayActual} · Omsætning dag 1: ${firstRow ? formatCurrency(firstRow.revenue_pred) + " kr" : "—"} · Timer: ${firstRow ? formatNumber(firstRow.hours_recommended) : "—"}`;
+                const actualWeatherLine = firstRow && (
+                    firstRow.temp_max_actual != null ||
+                    firstRow.precip_sum_actual != null ||
+                    firstRow.sunshine_hours_actual != null
+                )
+                    ? `<div class="log-weather">Vejr dag 1 (aktuel): ${firstRow.temp_max_actual != null ? formatNumber(firstRow.temp_max_actual) + " °C" : "—"}, ${firstRow.precip_sum_actual != null ? formatNumber(firstRow.precip_sum_actual) + " mm" : "—"}, ${firstRow.sunshine_hours_actual != null ? formatNumber(firstRow.sunshine_hours_actual) + " t" : "—"}</div>`
+                    : "";
                 details.innerHTML = `
-                    <summary>${entry.forecast_date} · Horisont: ${entry.horizon_days} dage · Model: ${entry.model_backend}</summary>
-                    ${firstRow ? `<div class="log-meta">Omsætning dag 1: ${formatCurrency(firstRow.revenue_pred)} kr${actualIntro} · Timer: ${formatNumber(firstRow.hours_recommended)}</div>` : ""}
-                    ${weather ? `<div class="log-weather">Vejr dag 1: ${formatNumber(weather.temp_max)} °C, ${formatNumber(weather.precip_sum || 0)} mm, ${formatNumber(weather.sunshine_hours || 0)} t sol</div>` : ""}
+                    <summary>${summaryText}</summary>
+                    ${weather ? `<div class="log-weather">Vejr dag 1 (forecast): ${formatNumber(weather.temp_max)} °C, ${formatNumber(weather.precip_sum || 0)} mm, ${formatNumber(weather.sunshine_hours || 0)} t</div>` : ""}
+                    ${actualWeatherLine}
                     ${renderLogTable(entry.rows || [])}
                 `;
                 list.appendChild(details);
@@ -231,29 +239,35 @@
                 return "";
             }
             const hourly = initialData?.avg_hourly_wage ?? defaultHourly;
-            const tableRows = rows.map((row) => {
-                const wagePct = row.planday_hours != null && row.revenue_pred
-                    ? (row.planday_hours * hourly / row.revenue_pred) * 100
-                    : null;
-                const diffClass = row.hours_diff > 1 ? "diff-positive" : row.hours_diff < -1 ? "diff-negative" : "";
-                const actualText = row.revenue_actual != null ? formatCurrency(row.revenue_actual) : "—";
+                const tableRows = rows.map((row) => {
+                    const wagePct = row.planday_hours != null && row.revenue_pred
+                        ? (row.planday_hours * hourly / row.revenue_pred) * 100
+                        : null;
+                    const diffClass = row.hours_diff > 1 ? "diff-positive" : row.hours_diff < -1 ? "diff-negative" : "";
+                    const actualText = row.revenue_actual != null ? formatCurrency(row.revenue_actual) : "—";
+                    const sunActual = row.sunshine_hours_actual != null ? formatNumber(row.sunshine_hours_actual) + " t" : "—";
+                    const precipActual = row.precip_sum_actual != null ? formatNumber(row.precip_sum_actual) + " mm" : "—";
+                    const tempActual = row.temp_max_actual != null ? formatNumber(row.temp_max_actual) + " °C" : "—";
+                    return `
+                        <tr>
+                            <td>${new Date(row.date).toLocaleDateString("da-DK", { weekday: "short", day: "numeric", month: "short" })}</td>
+                            <td>${formatCurrency(row.revenue_pred)}</td>
+                            <td>${actualText}</td>
+                            <td>${formatNumber(row.hours_recommended)}</td>
+                            <td>${row.planday_hours != null ? formatNumber(row.planday_hours) : "—"}</td>
+                            <td>${wagePct != null ? formatNumber(wagePct) + " %" : "—"}</td>
+                            <td class="${diffClass}">${row.hours_diff != null ? formatNumber(row.hours_diff) : "—"}</td>
+                            <td>${row.sunshine_hours != null ? formatNumber(row.sunshine_hours) + " t" : "—"}</td>
+                            <td>${row.precip_sum != null ? formatNumber(row.precip_sum) + " mm" : "—"}</td>
+                            <td>${row.temp_max != null ? formatNumber(row.temp_max) + " °C" : "—"}</td>
+                            <td>${sunActual}</td>
+                            <td>${precipActual}</td>
+                            <td>${tempActual}</td>
+                        </tr>
+                    `;
+                }).join("");
                 return `
-                    <tr>
-                        <td>${new Date(row.date).toLocaleDateString("da-DK", { weekday: "short", day: "numeric", month: "short" })}</td>
-                        <td>${formatCurrency(row.revenue_pred)}</td>
-                        <td>${actualText}</td>
-                        <td>${formatNumber(row.hours_recommended)}</td>
-                        <td>${row.planday_hours != null ? formatNumber(row.planday_hours) : "—"}</td>
-                        <td>${wagePct != null ? formatNumber(wagePct) + " %" : "—"}</td>
-                        <td class="${diffClass}">${row.hours_diff != null ? formatNumber(row.hours_diff) : "—"}</td>
-                        <td>${row.sunshine_hours != null ? formatNumber(row.sunshine_hours) + " t" : "—"}</td>
-                        <td>${row.precip_sum != null ? formatNumber(row.precip_sum) + " mm" : "—"}</td>
-                        <td>${row.temp_max != null ? formatNumber(row.temp_max) + " °C" : "—"}</td>
-                    </tr>
-                `;
-            }).join("");
-            return `
-                <table class="log-table">
+                    <table class="log-table">
                     <thead>
                         <tr>
                             <th>Dato</th>
@@ -266,6 +280,9 @@
                             <th>☀️ Sol</th>
                             <th>🌧️ Nedbør</th>
                             <th>🌡️ Temp</th>
+                            <th>☀️ Sol (akt)</th>
+                            <th>🌧️ Nedbør (akt)</th>
+                            <th>🌡️ Temp (akt)</th>
                         </tr>
                     </thead>
                     <tbody>${tableRows}</tbody>

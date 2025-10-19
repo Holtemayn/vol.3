@@ -28,6 +28,7 @@ class Settings(BaseSettings):
     WEATHER_LONGITUDE: float = 12.5683
     WEATHER_TIMEZONE: str = "Europe/Copenhagen"
     WEATHER_API_BASE_URL: str | None = None
+    WEATHER_ARCHIVE_API_BASE_URL: str | None = None
 
     # ------------------------------------------------------------------
     # Planday OAuth

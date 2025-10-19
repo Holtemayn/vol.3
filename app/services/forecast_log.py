@@ -49,12 +49,16 @@ forecast_logs = Table(
 def _rows_to_serializable(
     rows: Iterable["ForecastRow"],
     actuals: Optional[dict[date, float]] = None,
+    actual_weather: Optional[dict[date, dict[str, float]]] = None,
 ) -> list[dict]:
     serializable = []
     for row in rows:
         actual_value: float | None = None
         if actuals:
             actual_value = actuals.get(row.date)
+        weather_actual: dict[str, float] | None = None
+        if actual_weather:
+            weather_actual = actual_weather.get(row.date)
         serializable.append(
             {
                 "date": row.date.isoformat(),
@@ -67,6 +71,11 @@ def _rows_to_serializable(
                 "precip_sum": row.precip_sum,
                 "sunshine_hours": row.sunshine_hours,
                 "wind_max": row.wind_max,
+                "temp_max_actual": weather_actual.get("temp_max") if weather_actual else None,
+                "temp_min_actual": weather_actual.get("temp_min") if weather_actual else None,
+                "precip_sum_actual": weather_actual.get("precip_sum") if weather_actual else None,
+                "sunshine_hours_actual": weather_actual.get("sunshine_hours") if weather_actual else None,
+                "wind_max_actual": weather_actual.get("wind_max") if weather_actual else None,
             }
         )
     return serializable
@@ -93,15 +102,18 @@ def log_forecast_event(
     """
     sample_rows = list(result.rows)
     actual_map: dict[date, float] | None = None
+    weather_actual_map: dict[date, dict[str, float]] | None = None
     try:
         from app.services.planday import get_planday_revenue_for_dates
+        from app.services.weather import get_historic_weather_map
 
         if sample_rows:
             actual_map = get_planday_revenue_for_dates([row.date for row in sample_rows])
+            weather_actual_map = get_historic_weather_map([row.date for row in sample_rows])
     except Exception as exc:  # pragma: no cover - afhænger af API
         LOGGER.warning("Kunne ikke hente omsætning fra Planday: %s", exc)
 
-    rows_payload = _rows_to_serializable(sample_rows, actuals=actual_map)
+    rows_payload = _rows_to_serializable(sample_rows, actuals=actual_map, actual_weather=weather_actual_map)
     weather_subset = None
     if weather_frame is not None:
         try:

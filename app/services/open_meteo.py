@@ -9,6 +9,7 @@ from app.core.config import settings
 
 DAILY_FIELDS = "temperature_2m_max,temperature_2m_min,precipitation_sum,wind_speed_10m_max,sunshine_duration"
 HOURLY_FIELDS = "precipitation"
+ARCHIVE_DAILY_FIELDS = DAILY_FIELDS
 RAIN_BINS = [-0.1, 0.1, 1, 4, 10, 20, 1_000]
 RAIN_LABELS = ["0", "0.1-1", "1.1-4", "4.1-10", "10.1-20", "20+"]
 
@@ -90,3 +91,56 @@ def fetch_weather(
                 df["precip_sum"] = df["date"].map(daily_precip).fillna(df["precip_sum"])
 
     return df
+
+
+def fetch_historic_weather(
+    start_date: date,
+    end_date: date,
+    latitude: float | None = None,
+    longitude: float | None = None,
+) -> pd.DataFrame:
+    lat = latitude or settings.WEATHER_LATITUDE
+    lon = longitude or settings.WEATHER_LONGITUDE
+    params = {
+        "latitude": lat,
+        "longitude": lon,
+        "start_date": start_date.isoformat(),
+        "end_date": end_date.isoformat(),
+        "daily": ARCHIVE_DAILY_FIELDS,
+        "timezone": settings.WEATHER_TIMEZONE,
+    }
+    base_url = (
+        settings.WEATHER_ARCHIVE_API_BASE_URL
+        or "https://archive-api.open-meteo.com/v1/archive"
+    )
+    response = requests.get(base_url, params=params, timeout=30)
+    response.raise_for_status()
+    payload = response.json()
+    daily = payload.get("daily")
+    if not daily:
+        raise ValueError("Open-Meteo archive svarede uden 'daily'")
+    df = pd.DataFrame(daily).copy()
+    if df.empty:
+        raise ValueError("Open-Meteo archive returnerede tom 'daily'")
+    df["time"] = pd.to_datetime(df["time"])
+    df["date"] = df["time"].dt.normalize()
+    df = df.rename(
+        columns={
+            "temperature_2m_max": "temp_max",
+            "temperature_2m_min": "temp_min",
+            "precipitation_sum": "precip_sum",
+            "wind_speed_10m_max": "wind_max",
+            "sunshine_duration": "sunshine_sec",
+        }
+    )
+    df["sunshine_hours"] = df["sunshine_sec"].fillna(0.0) / 3600.0
+    return df[
+        [
+            "date",
+            "temp_max",
+            "temp_min",
+            "precip_sum",
+            "wind_max",
+            "sunshine_hours",
+        ]
+    ].copy()
