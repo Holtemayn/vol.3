@@ -91,12 +91,13 @@ def log_forecast_event(
     Append forecast + vejrdata til en logfil (newline-delimited JSON).
     Svigter logningen, nøjes vi med en warning – forecast skal ikke fejle.
     """
-    sample_rows = result.rows[:5]
+    sample_rows = list(result.rows)
     actual_map: dict[date, float] | None = None
     try:
         from app.services.planday import get_planday_revenue_for_dates
 
-        actual_map = get_planday_revenue_for_dates([row.date for row in sample_rows])
+        if sample_rows:
+            actual_map = get_planday_revenue_for_dates([row.date for row in sample_rows])
     except Exception as exc:  # pragma: no cover - afhænger af API
         LOGGER.warning("Kunne ikke hente omsætning fra Planday: %s", exc)
 

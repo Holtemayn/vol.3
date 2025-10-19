@@ -28,6 +28,12 @@
         .log-list li { border-bottom: 1px solid #e5e5ea; padding: 0.75rem 0; }
         .log-meta { font-size: 0.85rem; color: #555; display: flex; gap: 0.75rem; flex-wrap: wrap; }
         .log-weather { margin-top: 0.5rem; font-size: 0.85rem; color: #333; }
+        details.log-entry { margin-bottom: 0.75rem; border: 1px solid #e5e5ea; border-radius: 8px; padding: 0.75rem 1rem; background: #fafafa; }
+        details.log-entry summary { cursor: pointer; font-weight: 600; outline: none; }
+        .log-table { width: 100%; border-collapse: collapse; margin-top: 0.75rem; }
+        .log-table th, .log-table td { font-size: 0.85rem; text-align: left; padding: 0.35rem 0.5rem; border-bottom: 1px solid #e5e5ea; }
+        .log-table th { font-weight: 600; color: #444; background: rgba(15,107,189,0.08); }
+        .log-table tr:last-child td { border-bottom: none; }
         .chat-window { border: 1px solid #e5e5ea; border-radius: 8px; padding: 1rem; max-height: 320px; overflow-y: auto; background: #fafafa; }
         .chat-message { margin-bottom: 0.75rem; }
         .chat-message.user { text-align: right; }
@@ -147,6 +153,8 @@
         const tableBody = document.querySelector("#forecast-table tbody");
         const warningStack = document.getElementById("warning-stack");
         const modelMeta = document.getElementById("model-meta");
+        const initialData = {{ initial | tojson }};
+        const defaultHourly = {{ initial.avg_hourly_wage | default(0) }};
 
         function formatNumber(value) {
             return new Intl.NumberFormat("da-DK", { maximumFractionDigits: 1 }).format(value);
@@ -203,24 +211,66 @@
                 return;
             }
             items.forEach(entry => {
-                const li = document.createElement("li");
-                const heuristics = entry.rows && entry.rows.length ? entry.rows[0] : null;
+                const details = document.createElement("details");
+                details.className = "log-entry";
+                const firstRow = entry.rows && entry.rows.length ? entry.rows[0] : null;
                 const weather = entry.weather && entry.weather.length ? entry.weather[0] : null;
-                const actualText = heuristics && heuristics.revenue_actual != null
-                    ? ` · Planday: ${formatCurrency(heuristics.revenue_actual)} kr`
-                    : "";
-                li.innerHTML = `
-                    <strong>${entry.forecast_date}</strong>
-                    <div class="log-meta">
-                        <span>Horisont: ${entry.horizon_days} dage</span>
-                        <span>Model: ${entry.model_backend}</span>
-                        <span>Warnings: ${entry.warnings?.length || 0}</span>
-                    </div>
-                    ${heuristics ? `<div class="log-meta">Omsætning dag 1: ${formatCurrency(heuristics.revenue_pred)} kr${actualText} · Timer: ${formatNumber(heuristics.hours_recommended)}</div>` : ""}
+                const actualIntro = firstRow && firstRow.revenue_actual != null ? ` · Planday: ${formatCurrency(firstRow.revenue_actual)} kr` : "";
+                details.innerHTML = `
+                    <summary>${entry.forecast_date} · Horisont: ${entry.horizon_days} dage · Model: ${entry.model_backend}</summary>
+                    ${firstRow ? `<div class="log-meta">Omsætning dag 1: ${formatCurrency(firstRow.revenue_pred)} kr${actualIntro} · Timer: ${formatNumber(firstRow.hours_recommended)}</div>` : ""}
                     ${weather ? `<div class="log-weather">Vejr dag 1: ${formatNumber(weather.temp_max)} °C, ${formatNumber(weather.precip_sum || 0)} mm, ${formatNumber(weather.sunshine_hours || 0)} t sol</div>` : ""}
+                    ${renderLogTable(entry.rows || [])}
                 `;
-                list.appendChild(li);
+                list.appendChild(details);
             });
+        }
+
+        function renderLogTable(rows) {
+            if (!rows.length) {
+                return "";
+            }
+            const hourly = initialData?.avg_hourly_wage ?? defaultHourly;
+            const tableRows = rows.map((row) => {
+                const wagePct = row.planday_hours != null && row.revenue_pred
+                    ? (row.planday_hours * hourly / row.revenue_pred) * 100
+                    : null;
+                const diffClass = row.hours_diff > 1 ? "diff-positive" : row.hours_diff < -1 ? "diff-negative" : "";
+                const actualText = row.revenue_actual != null ? formatCurrency(row.revenue_actual) : "—";
+                return `
+                    <tr>
+                        <td>${new Date(row.date).toLocaleDateString("da-DK", { weekday: "short", day: "numeric", month: "short" })}</td>
+                        <td>${formatCurrency(row.revenue_pred)}</td>
+                        <td>${actualText}</td>
+                        <td>${formatNumber(row.hours_recommended)}</td>
+                        <td>${row.planday_hours != null ? formatNumber(row.planday_hours) : "—"}</td>
+                        <td>${wagePct != null ? formatNumber(wagePct) + " %" : "—"}</td>
+                        <td class="${diffClass}">${row.hours_diff != null ? formatNumber(row.hours_diff) : "—"}</td>
+                        <td>${row.sunshine_hours != null ? formatNumber(row.sunshine_hours) + " t" : "—"}</td>
+                        <td>${row.precip_sum != null ? formatNumber(row.precip_sum) + " mm" : "—"}</td>
+                        <td>${row.temp_max != null ? formatNumber(row.temp_max) + " °C" : "—"}</td>
+                    </tr>
+                `;
+            }).join("");
+            return `
+                <table class="log-table">
+                    <thead>
+                        <tr>
+                            <th>Dato</th>
+                            <th>Oms</th>
+                            <th>Planday oms</th>
+                            <th>An. timer</th>
+                            <th>Planday timer</th>
+                            <th>P-løn %</th>
+                            <th>Afvigelse</th>
+                            <th>☀️ Sol</th>
+                            <th>🌧️ Nedbør</th>
+                            <th>🌡️ Temp</th>
+                        </tr>
+                    </thead>
+                    <tbody>${tableRows}</tbody>
+                </table>
+            `;
         }
 
         async function loadLogs() {
@@ -277,7 +327,7 @@
         document.getElementById("refresh-log").addEventListener("click", () => loadLogs());
         document.getElementById("log-limit").addEventListener("change", () => loadLogs());
 
-        renderTable({{ initial | tojson }});
+        renderTable(initialData);
         loadLogs();
 
         const chatKitHost = document.getElementById("chatkit-host");
