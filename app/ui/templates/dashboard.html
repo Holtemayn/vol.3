@@ -206,6 +206,9 @@
                 const li = document.createElement("li");
                 const heuristics = entry.rows && entry.rows.length ? entry.rows[0] : null;
                 const weather = entry.weather && entry.weather.length ? entry.weather[0] : null;
+                const actualText = heuristics && heuristics.revenue_actual != null
+                    ? ` · Planday: ${formatCurrency(heuristics.revenue_actual)} kr`
+                    : "";
                 li.innerHTML = `
                     <strong>${entry.forecast_date}</strong>
                     <div class="log-meta">
@@ -213,7 +216,7 @@
                         <span>Model: ${entry.model_backend}</span>
                         <span>Warnings: ${entry.warnings?.length || 0}</span>
                     </div>
-                    ${heuristics ? `<div class="log-meta">Omsætning dag 1: ${formatCurrency(heuristics.revenue_pred)} kr · Timer: ${formatNumber(heuristics.hours_recommended)}</div>` : ""}
+                    ${heuristics ? `<div class="log-meta">Omsætning dag 1: ${formatCurrency(heuristics.revenue_pred)} kr${actualText} · Timer: ${formatNumber(heuristics.hours_recommended)}</div>` : ""}
                     ${weather ? `<div class="log-weather">Vejr dag 1: ${formatNumber(weather.temp_max)} °C, ${formatNumber(weather.precip_sum || 0)} mm, ${formatNumber(weather.sunshine_hours || 0)} t sol</div>` : ""}
                 `;
                 list.appendChild(li);

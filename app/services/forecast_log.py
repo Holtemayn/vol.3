@@ -46,9 +46,15 @@ forecast_logs = Table(
     Column("weather", JSON, nullable=False),
 )
 
-def _rows_to_serializable(rows: Iterable["ForecastRow"]) -> list[dict]:
+def _rows_to_serializable(
+    rows: Iterable["ForecastRow"],
+    actuals: Optional[dict[date, float]] = None,
+) -> list[dict]:
     serializable = []
     for row in rows:
+        actual_value: float | None = None
+        if actuals:
+            actual_value = actuals.get(row.date)
         serializable.append(
             {
                 "date": row.date.isoformat(),
@@ -56,6 +62,7 @@ def _rows_to_serializable(rows: Iterable["ForecastRow"]) -> list[dict]:
                 "hours_recommended": row.hours_recommended,
                 "planday_hours": row.planday_hours,
                 "hours_diff": row.hours_diff,
+                "revenue_actual": actual_value,
                 "temp_max": row.temp_max,
                 "precip_sum": row.precip_sum,
                 "sunshine_hours": row.sunshine_hours,
@@ -84,7 +91,16 @@ def log_forecast_event(
     Append forecast + vejrdata til en logfil (newline-delimited JSON).
     Svigter logningen, nøjes vi med en warning – forecast skal ikke fejle.
     """
-    rows_payload = _rows_to_serializable(result.rows[:5])
+    sample_rows = result.rows[:5]
+    actual_map: dict[date, float] | None = None
+    try:
+        from app.services.planday import get_planday_revenue_for_dates
+
+        actual_map = get_planday_revenue_for_dates([row.date for row in sample_rows])
+    except Exception as exc:  # pragma: no cover - afhænger af API
+        LOGGER.warning("Kunne ikke hente omsætning fra Planday: %s", exc)
+
+    rows_payload = _rows_to_serializable(sample_rows, actuals=actual_map)
     weather_subset = None
     if weather_frame is not None:
         try:

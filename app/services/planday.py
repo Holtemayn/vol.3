@@ -59,6 +59,57 @@ def get_planday_hours_for_dates(dates: List[date]) -> Dict[date, float | None]:
     return result
 
 
+def get_planday_revenue_for_dates(dates: List[date]) -> Dict[date, float | None]:
+    """Returnér {date: omsætning}. Mangler konfiguration → None."""
+    if not dates:
+        return {}
+    if not settings.PLANDAY_REVENUE_UNIT_ID and not settings.PLANDAY_DEPARTMENT_ID:
+        return {d: None for d in dates}
+    if not _planday_configured():
+        return {d: None for d in dates}
+
+    start = min(dates)
+    end = max(dates)
+    params = {
+        "from": start.isoformat(),
+        "to": end.isoformat(),
+    }
+    if settings.PLANDAY_REVENUE_UNIT_ID:
+        params["revenueUnitId"] = settings.PLANDAY_REVENUE_UNIT_ID
+    elif settings.PLANDAY_DEPARTMENT_ID:
+        params["departmentId"] = settings.PLANDAY_DEPARTMENT_ID
+
+    try:
+        response = requests.get(
+            f"{BASE_URL}/revenue/v1.0/revenue",
+            headers=_headers(),
+            params=params,
+            timeout=60,
+        )
+        response.raise_for_status()
+        payload = response.json() or {}
+        records = payload.get("data") or []
+    except Exception as exc:  # pragma: no cover - afhænger af API
+        LOGGER.warning("Planday revenue fetch failed: %s", exc)
+        return {d: None for d in dates}
+
+    result: Dict[date, float | None] = {d: None for d in dates}
+    for item in records:
+        raw_date = item.get("date")
+        if not raw_date:
+            continue
+        try:
+            dt = date.fromisoformat(str(raw_date)[:10])
+        except ValueError:
+            continue
+        turnover = item.get("turnover")
+        if turnover is None:
+            continue
+        if dt in result:
+            result[dt] = float(turnover)
+    return result
+
+
 # ------------------------------------------------------------------------------
 # Access tokens & headers
 

@@ -38,6 +38,7 @@ class Settings(BaseSettings):
     PLANDAY_TENANT_ID: str | None = None
     PLANDAY_DEPARTMENT_ID: str | None = None
     PLANDAY_EMPLOYEE_GROUP_ID: str | None = None
+    PLANDAY_REVENUE_UNIT_ID: str | None = None
 
     # ------------------------------------------------------------------
     # Google Sheets (service account JSON forventes base64-enkodet)
