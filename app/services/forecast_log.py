@@ -178,19 +178,27 @@ def _log_to_database(
         exists = session.execute(
             select(forecast_logs.c.id).where(forecast_logs.c.forecast_date == start_date)
         ).first()
+        values = {
+            "horizon_days": min(horizon_days, 5),
+            "model_version": result.model_version,
+            "model_backend": result.model_backend,
+            "warnings": result.warnings,
+            "rows": rows_payload,
+            "weather": weather_payload,
+        }
         if exists:
-            return  # Kun log én gang pr. dag
-        session.execute(
-            forecast_logs.insert().values(
-                forecast_date=start_date,
-                horizon_days=min(horizon_days, 5),
-                model_version=result.model_version,
-                model_backend=result.model_backend,
-                warnings=result.warnings,
-                rows=rows_payload,
-                weather=weather_payload,
+            session.execute(
+                forecast_logs.update()
+                .where(forecast_logs.c.forecast_date == start_date)
+                .values(**values)
             )
-        )
+        else:
+            session.execute(
+                forecast_logs.insert().values(
+                    forecast_date=start_date,
+                    **values,
+                )
+            )
         session.commit()
 
 
@@ -240,9 +248,6 @@ def _log_to_file(
     try:
         path = Path(settings.FORECAST_LOG_PATH)
         path.parent.mkdir(parents=True, exist_ok=True)
-        entries = _read_from_file(limit=1000)
-        if any(entry.get("forecast_date") == start_date.isoformat() for entry in entries):
-            return
         payload = {
             "forecast_date": start_date.isoformat(),
             "horizon_days": min(horizon_days, 5),
@@ -252,8 +257,27 @@ def _log_to_file(
             "rows": rows_payload,
             "weather": weather_payload,
         }
-        with path.open("a", encoding="utf-8") as handler:
-            handler.write(json.dumps(payload, ensure_ascii=False) + "\n")
+        lines: list[str] = []
+        replaced = False
+        if path.exists():
+            with path.open("r", encoding="utf-8") as handler:
+                for line in handler:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        entry = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+                    if entry.get("forecast_date") == start_date.isoformat():
+                        lines.append(json.dumps(payload, ensure_ascii=False))
+                        replaced = True
+                    else:
+                        lines.append(json.dumps(entry, ensure_ascii=False))
+        if not replaced:
+            lines.append(json.dumps(payload, ensure_ascii=False))
+        with path.open("w", encoding="utf-8") as handler:
+            handler.write("\n".join(lines) + "\n")
     except Exception as exc:  # pragma: no cover
         LOGGER.warning("Kunne ikke logge forecast-event (fil): %s", exc)
 
