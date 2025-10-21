@@ -141,6 +141,7 @@ def read_recent_forecasts(limit: int = 10) -> List[dict]:
     else:
         entries = _read_from_file(limit)
     _hydrate_planday_actuals(entries)
+    _hydrate_weather_actuals(entries)
     return entries
 
 
@@ -346,3 +347,51 @@ def _parse_row_date(value: Optional[str]) -> Optional[date]:
         return datetime.fromisoformat(str(value)[:10]).date()
     except ValueError:
         return None
+
+
+def _hydrate_weather_actuals(entries: List[dict]) -> None:
+    missing_dates: set[date] = set()
+    today = date.today()
+
+    for entry in entries:
+        for row in entry.get("rows") or []:
+            row_date = _parse_row_date(row.get("date"))
+            if not row_date or row_date > today:
+                continue
+            if any(
+                row.get(key) is not None
+                for key in (
+                    "temp_max_actual",
+                    "temp_min_actual",
+                    "precip_sum_actual",
+                    "sunshine_hours_actual",
+                    "wind_max_actual",
+                )
+            ):
+                continue
+            missing_dates.add(row_date)
+
+    if not missing_dates:
+        return
+
+    try:
+        from app.services.weather import get_historic_weather_map
+
+        weather_map = get_historic_weather_map(sorted(missing_dates))
+    except Exception as exc:  # pragma: no cover - ekstern afhængighed
+        LOGGER.warning("Kunne ikke hente historisk vejr: %s", exc)
+        return
+
+    for entry in entries:
+        for row in entry.get("rows") or []:
+            row_date = _parse_row_date(row.get("date"))
+            if not row_date:
+                continue
+            weather_actual = weather_map.get(row_date)
+            if not weather_actual:
+                continue
+            row["temp_max_actual"] = weather_actual.get("temp_max")
+            row["temp_min_actual"] = weather_actual.get("temp_min")
+            row["precip_sum_actual"] = weather_actual.get("precip_sum")
+            row["sunshine_hours_actual"] = weather_actual.get("sunshine_hours")
+            row["wind_max_actual"] = weather_actual.get("wind_max")
