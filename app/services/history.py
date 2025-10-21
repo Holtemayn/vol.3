@@ -1,12 +1,8 @@
 from __future__ import annotations
 
-from datetime import datetime
-from typing import Any, Dict, List, Optional
-
 from calendar import day_name
 from datetime import date as date_cls, datetime
 from math import sqrt
-from statistics import mean
 from typing import Any, Dict, List, Optional
 
 from bson import json_util
@@ -14,6 +10,7 @@ from pymongo import MongoClient
 from pymongo.collection import Collection
 
 from app.core.config import settings
+from app.services.weather import get_weather_df
 
 _client: Optional[MongoClient] = None
 _collection: Optional[Collection] = None
@@ -61,17 +58,44 @@ def fetch_daily_aggregates(start_date: str, end_date: str, limit: Optional[int] 
     return documents
 
 
-def _fetch_target_document(target: date_cls) -> Dict[str, Any]:
-    collection = _get_collection()
+def _fetch_target_document(collection: Collection, target: date_cls) -> Dict[str, Any]:
     start_dt = datetime.combine(target, datetime.min.time())
     end_dt = datetime.combine(target, datetime.max.time())
     doc = collection.find_one({"dato": {"$gte": start_dt, "$lte": end_dt}})
     if not doc:
-        raise ValueError(f"Ingen historik fundet for {target.isoformat()}")
+        return _build_target_from_forecast(target)
     clean = json_util.loads(json_util.dumps(doc))
     clean["date"] = clean.pop("dato", {}).get("$date")
+    clean["source"] = "history"
     clean.pop("_id", None)
+    clean["rain"] = float(clean.get("rain") or 0.0)
+    clean["sunshine_duration"] = float(clean.get("sunshine_duration") or 0.0)
+    clean["temperature_2m"] = float(clean.get("temperature_2m") or 0.0)
+    clean["wind_gusts_10m"] = float(clean.get("wind_gusts_10m") or 0.0)
     return clean
+
+
+def _build_target_from_forecast(target: date_cls) -> Dict[str, Any]:
+    payload = get_weather_df([target])
+    frame = payload.frame
+    if frame is None or frame.empty:
+        raise ValueError(f"Ingen historik eller forecast fundet for {target.isoformat()}")
+    row = frame.iloc[0]
+    rain = float(row.get("precip_sum") or 0.0)
+    sunshine_hours = float(row.get("sunshine_hours") or 0.0)
+    temp = float(row.get("temp_max") or 0.0)
+    wind = float(row.get("wind_max") or 0.0)
+    return {
+        "date": target.isoformat(),
+        "ugedag": target.weekday(),
+        "ugenummer": target.isocalendar().week,
+        "år": target.year,
+        "rain": rain,
+        "sunshine_duration": sunshine_hours * 3600.0,
+        "temperature_2m": temp,
+        "wind_gusts_10m": wind,
+        "source": "forecast",
+    }
 
 
 def _day_label(weekday: int) -> str:
@@ -82,8 +106,8 @@ def _day_label(weekday: int) -> str:
 
 
 def find_similar_days(target_date: date_cls, max_candidates: int = 500) -> Dict[str, Any]:
-    target_doc = _fetch_target_document(target_date)
     collection = _get_collection()
+    target_doc = _fetch_target_document(collection, target_date)
 
     weekday = target_doc.get("ugedag")
     week_number = target_doc.get("ugenummer")
@@ -113,6 +137,10 @@ def find_similar_days(target_date: date_cls, max_candidates: int = 500) -> Dict[
         clean.pop("_id", None)
         if not date_value:
             continue
+        clean["rain"] = float(clean.get("rain") or 0.0)
+        clean["sunshine_duration"] = float(clean.get("sunshine_duration") or 0.0)
+        clean["temperature_2m"] = float(clean.get("temperature_2m") or 0.0)
+        clean["wind_gusts_10m"] = float(clean.get("wind_gusts_10m") or 0.0)
         candidates.append(clean)
 
     if not candidates:
