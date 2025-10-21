@@ -52,7 +52,7 @@ def fetch_daily_aggregates(start_date: str, end_date: str, limit: Optional[int] 
     for doc in cursor:
         clean = json_util.loads(json_util.dumps(doc))
         dato = clean.pop("dato", None)
-        clean["date"] = dato if not isinstance(dato, dict) else dato.get("$date")
+        clean["date"] = _to_iso_value(dato)
         clean.pop("_id", None)
         documents.append(clean)
     return documents
@@ -65,7 +65,8 @@ def _fetch_target_document(collection: Collection, target: date_cls) -> Dict[str
     if not doc:
         return _build_target_from_forecast(target)
     clean = json_util.loads(json_util.dumps(doc))
-    clean["date"] = clean.pop("dato", {}).get("$date")
+    dato = clean.pop("dato", None)
+    clean["date"] = _to_iso_value(dato)
     clean["source"] = "history"
     clean.pop("_id", None)
     clean["rain"] = float(clean.get("rain") or 0.0)
@@ -132,8 +133,8 @@ def find_similar_days(target_date: date_cls, max_candidates: int = 500) -> Dict[
     candidates: List[Dict[str, Any]] = []
     for doc in cursor:
         clean = json_util.loads(json_util.dumps(doc))
-        date_value = clean.pop("dato", {}).get("$date")
-        clean["date"] = date_value
+        date_value = clean.pop("dato", None)
+        clean["date"] = _to_iso_value(date_value)
         clean.pop("_id", None)
         if not date_value:
             continue
@@ -214,3 +215,24 @@ def find_similar_days(target_date: date_cls, max_candidates: int = 500) -> Dict[
         "candidates_considered": len(candidates),
         "metrics": [metric for metric, _, _ in metrics],
     }
+
+
+def _to_iso_value(value: Any) -> str | None:
+    if value is None:
+        return None
+    if isinstance(value, dict):
+        inner = value.get("$date")
+        if isinstance(inner, dict):
+            inner_value = inner.get("$numberLong") or inner.get("$numberDouble")
+            if inner_value:
+                try:
+                    return datetime.fromtimestamp(int(inner_value) / 1000).isoformat()
+                except Exception:
+                    return str(inner)
+        return inner if isinstance(inner, str) else str(inner)
+    if hasattr(value, "isoformat"):
+        try:
+            return value.isoformat()
+        except Exception:
+            return str(value)
+    return str(value)

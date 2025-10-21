@@ -42,12 +42,6 @@ class Settings(BaseSettings):
     PLANDAY_REVENUE_UNIT_ID: str | None = None
 
     # ------------------------------------------------------------------
-    # Google Sheets (service account JSON forventes base64-enkodet)
-    GOOGLE_SHEETS_CREDENTIALS_JSON: str | None = None
-    GOOGLE_SHEETS_SPREADSHEET_ID: str | None = None
-    GOOGLE_SHEETS_WORKSHEET_NAME: str | None = None
-
-    # ------------------------------------------------------------------
     # Misc / future extensions
     DATABASE_URL: str | None = Field(default=None)
     OPENAI_API_KEY: str | None = None

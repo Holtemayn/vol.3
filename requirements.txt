@@ -17,4 +17,3 @@ SQLAlchemy
 psycopg2-binary
 # Google Sheets
 gspread
-google-auth
