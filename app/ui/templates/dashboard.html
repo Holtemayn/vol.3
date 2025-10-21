@@ -45,16 +45,17 @@
         @keyframes typing { 0%, 80%, 100% { opacity: 0.2; transform: translateY(0); } 40% { opacity: 1; transform: translateY(-3px); } }
         .similar-controls { display: inline-flex; align-items: center; gap: 0.75rem; justify-content: flex-end; width: 100%; }
         .similar-grid { display: grid; gap: 1.25rem; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); margin-top: 1.5rem; }
-        .similar-grid::before { content: ""; grid-column: 1 / -1; border-bottom: 1px solid rgba(37,99,235,0.2); margin-bottom: 0.5rem; }
+        .similar-column { display: flex; flex-direction: column; gap: 0.65rem; }
+        .similar-label { font-size: 0.9rem; letter-spacing: 0.1em; text-transform: uppercase; color: rgba(37,99,235,0.85); }
         .similar-card { background: linear-gradient(180deg, rgba(15,107,189,0.08), rgba(15,107,189,0.02)); border: 1px solid rgba(37, 99, 235, 0.15); border-radius: 16px; padding: 1.2rem 1.35rem; box-shadow: 0 18px 35px rgba(15,107,189,0.12); display: flex; flex-direction: column; gap: 0.75rem; }
-        .similar-card h5 { margin: 0; font-size: 1.05rem; color: #0f172a; text-transform: uppercase; letter-spacing: 0.08em; }
-        .similar-card .similar-date { font-size: 1.1rem; font-weight: 700; color: #0f172a; }
-        .similar-card .similar-meta { display: flex; gap: 0.75rem; font-size: 0.9rem; color: rgba(15,107,189,0.75); text-transform: uppercase; letter-spacing: 0.06em; }
-        .similar-card .similar-oms { font-size: 1.4rem; font-weight: 700; color: #2563eb; }
-        .similar-card .similar-weather { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 0.5rem; font-size: 0.85rem; }
-        .similar-card .similar-weather span { display: block; background: rgba(255,255,255,0.6); border-radius: 10px; padding: 0.45rem 0.55rem; box-shadow: inset 0 0 12px rgba(37,99,235,0.08); }
-        .similar-card .similar-weather span strong { display: block; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.04em; color: rgba(17, 24, 39, 0.55); }
-        .similar-card .similar-weather span em { display: block; font-style: normal; font-weight: 600; color: #0f172a; margin-top: 0.25rem; }
+        .similar-card .similar-date { font-size: 0.95rem; font-weight: 600; color: rgba(15,23,42,0.8); text-transform: uppercase; letter-spacing: 0.08em; }
+        .similar-card .similar-oms { font-size: 1.6rem; font-weight: 700; color: #2563eb; }
+        .similar-card .similar-meta { font-size: 0.85rem; color: rgba(15,107,189,0.65); letter-spacing: 0.05em; text-transform: uppercase; }
+        .similar-card .similar-weather { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 0.6rem; font-size: 0.82rem; }
+        .similar-card .similar-weather span { display: block; background: rgba(255,255,255,0.6); border-radius: 10px; padding: 0.55rem 0.6rem; box-shadow: inset 0 0 12px rgba(37,99,235,0.08); }
+        .similar-card .similar-weather span strong { display: block; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.05em; color: rgba(17, 24, 39, 0.55); }
+        .similar-card .similar-weather span em { display: block; font-style: normal; font-weight: 600; color: #0f172a; margin-top: 0.2rem; }
+        .similar-card .similar-diff { font-size: 0.8rem; color: rgba(15,23,42,0.7); }
         .similar-summary { margin-top: 0.75rem; font-size: 0.95rem; color: #334155; }
         .log-list { list-style: none; padding-left: 0; margin-top: 1rem; }
         .log-list li { border-bottom: 1px solid #e5e5ea; padding: 0.75rem 0; }
@@ -436,24 +437,32 @@
             const targetLabel = targetDate
                 ? targetDate.toLocaleDateString("da-DK", { weekday: "long", day: "numeric", month: "long", year: "numeric" })
                 : "Ukendt dato";
-            similarSummaryEl.textContent = `Udgangspunkt: ${targetLabel} · Regn ${formatNumber(target.rain || 0)} mm · Sol ${formatHours(target.sunshine_duration || 0)} · Temp ${formatNumber(target.temperature_2m || 0)} °C`;
+            const targetOmsText = target.oms != null ? `${formatCurrency(target.oms)} kr` : "—";
+            similarSummaryEl.textContent = `Udgangspunkt: ${targetLabel} · Oms ${targetOmsText} · Regn ${formatNumber(target.rain || 0)} mm · Sol ${formatHours(target.sunshine_duration || 0)} · Temp ${formatNumber(target.temperature_2m || 0)} °C`;
 
             similarResultsEl.innerHTML = matches.map(match => {
                 const matchDate = match.date ? new Date(match.date) : null;
                 const dateLabel = matchDate
                     ? matchDate.toLocaleDateString("da-DK", { weekday: "short", day: "numeric", month: "short", year: "numeric" })
                     : match.date;
+                const omsText = match.oms != null ? `${formatCurrency(match.oms)} kr` : "—";
+                const diffText = match.difference != null ? formatNumber(match.difference) : "—";
                 return `
-                    <article class="similar-card">
-                        <h5>${match.label}</h5>
-                        <div class="similar-date">${dateLabel}</div>
-                        <ul>
-                            <li><span>Regn:</span> ${formatNumber(match.rain || 0)} mm</li>
-                            <li><span>Sol:</span> ${formatHours(match.sunshine_duration || 0)}</li>
-                            <li><span>Temp:</span> ${formatNumber(match.temperature_2m || 0)} °C</li>
-                            <li><span>Uge:</span> ${match.week || "—"} · ${match.weekday || ""}</li>
-                        </ul>
-                    </article>
+                    <div class="similar-column">
+                        <div class="similar-label">${match.label}</div>
+                        <article class="similar-card">
+                            <div class="similar-date">${dateLabel}</div>
+                            <div class="similar-oms">${omsText}</div>
+                            <div class="similar-meta">Uge ${match.week || "—"} · ${match.weekday || ""}</div>
+                            <div class="similar-weather">
+                                <span><strong>Regn</strong><em>${formatNumber(match.rain || 0)} mm</em></span>
+                                <span><strong>Sol</strong><em>${formatHours(match.sunshine_duration || 0)}</em></span>
+                                <span><strong>Regn + sol</strong><em>${formatNumber(match.rain || 0)} mm / ${formatHours(match.sunshine_duration || 0)}</em></span>
+                                <span><strong>Temp</strong><em>${formatNumber(match.temperature_2m || 0)} °C</em></span>
+                            </div>
+                            <div class="similar-diff">Afstand: ${diffText}</div>
+                        </article>
+                    </div>
                 `;
             }).join("");
         }

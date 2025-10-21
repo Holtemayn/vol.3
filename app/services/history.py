@@ -73,6 +73,8 @@ def _fetch_target_document(collection: Collection, target: date_cls) -> Dict[str
     clean["sunshine_duration"] = float(clean.get("sunshine_duration") or 0.0)
     clean["temperature_2m"] = float(clean.get("temperature_2m") or 0.0)
     clean["wind_gusts_10m"] = float(clean.get("wind_gusts_10m") or 0.0)
+    oms_val = clean.get("oms")
+    clean["oms"] = float(oms_val) if oms_val is not None else None
     return clean
 
 
@@ -95,6 +97,7 @@ def _build_target_from_forecast(target: date_cls) -> Dict[str, Any]:
         "sunshine_duration": sunshine_hours * 3600.0,
         "temperature_2m": temp,
         "wind_gusts_10m": wind,
+        "oms": None,
         "source": "forecast",
     }
 
@@ -142,6 +145,8 @@ def find_similar_days(target_date: date_cls, max_candidates: int = 500) -> Dict[
         clean["sunshine_duration"] = float(clean.get("sunshine_duration") or 0.0)
         clean["temperature_2m"] = float(clean.get("temperature_2m") or 0.0)
         clean["wind_gusts_10m"] = float(clean.get("wind_gusts_10m") or 0.0)
+        oms_val = clean.get("oms")
+        clean["oms"] = float(oms_val) if oms_val is not None else None
         candidates.append(clean)
 
     if not candidates:
@@ -205,6 +210,7 @@ def find_similar_days(target_date: date_cls, max_candidates: int = 500) -> Dict[
                 "sunshine_duration": selected.get("sunshine_duration"),
                 "temperature_2m": selected.get("temperature_2m"),
                 "wind_gusts_10m": selected.get("wind_gusts_10m"),
+                "oms": selected.get("oms"),
                 "difference": scorer(selected),
             }
         )
