@@ -356,7 +356,7 @@ def _hydrate_weather_actuals(entries: List[dict]) -> None:
     for entry in entries:
         for row in entry.get("rows") or []:
             row_date = _parse_row_date(row.get("date"))
-            if not row_date or row_date > today:
+            if not row_date or row_date >= today:
                 continue
             if any(
                 row.get(key) is not None
