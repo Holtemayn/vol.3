@@ -131,12 +131,17 @@ def log_forecast_event(
 
 
 def read_recent_forecasts(limit: int = 10) -> List[dict]:
+    entries: List[dict]
     if settings.DATABASE_URL:
         try:
-            return _read_from_database(limit)
+            entries = _read_from_database(limit)
         except Exception as exc:  # pragma: no cover
             LOGGER.warning("Kunne ikke læse logposter fra database: %s", exc)
-    return _read_from_file(limit)
+            entries = _read_from_file(limit)
+    else:
+        entries = _read_from_file(limit)
+    _hydrate_planday_actuals(entries)
+    return entries
 
 
 # ---------------------------------------------------------------------------
@@ -299,3 +304,45 @@ def _read_from_file(limit: int) -> List[dict]:
         except json.JSONDecodeError:
             continue
     return results
+
+
+def _hydrate_planday_actuals(entries: List[dict]) -> None:
+    missing_dates: set[date] = set()
+    today = date.today()
+
+    for entry in entries:
+        for row in entry.get("rows") or []:
+            row_date = _parse_row_date(row.get("date"))
+            if row_date and row_date <= today and row.get("revenue_actual") is None:
+                missing_dates.add(row_date)
+
+    if not missing_dates:
+        return
+
+    try:
+        from app.services.planday import get_planday_revenue_for_dates
+
+        actual_map = get_planday_revenue_for_dates(sorted(missing_dates))
+    except Exception as exc:  # pragma: no cover - afhænger af eksterne services
+        LOGGER.warning("Kunne ikke opdatere Planday omsætning: %s", exc)
+        return
+
+    for entry in entries:
+        for row in entry.get("rows") or []:
+            row_date = _parse_row_date(row.get("date"))
+            if not row_date:
+                continue
+            actual_value = actual_map.get(row_date)
+            if actual_value is not None:
+                row["revenue_actual"] = actual_value
+
+
+def _parse_row_date(value: Optional[str]) -> Optional[date]:
+    if not value:
+        return None
+    if isinstance(value, date):
+        return value
+    try:
+        return datetime.fromisoformat(str(value)[:10]).date()
+    except ValueError:
+        return None
