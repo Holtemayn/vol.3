@@ -1,30 +1,121 @@
+from __future__ import annotations
+
+from statistics import mean, median
+from typing import Dict, List
 
 from fastapi import APIRouter
-from pydantic import BaseModel
-from typing import List, Optional
-from datetime import date
-from app.services.sheets import append_rows
+from pydantic import BaseModel, Field
+
+from app.services.forecast_log import read_recent_forecasts
 
 router = APIRouter()
 
-class ReconcileRow(BaseModel):
-    date: date
-    revenue_pred: float
-    hours_recommended: float
-    planday_hours: Optional[float] = None
-    hours_diff: Optional[float] = None
+_TARGET_DAYS = (1, 3, 5, 10)
+
 
 class ReconcileRequest(BaseModel):
-    rows: List[ReconcileRow]
+    limit: int = Field(
+        10,
+        ge=1,
+        le=50,
+        description="Antal logposter der analyseres for afstemning",
+    )
 
-@router.post("")
-def reconcile(req: ReconcileRequest):
-    values = [[
-        r.date.isoformat(),
-        r.revenue_pred,
-        r.hours_recommended,
-        r.planday_hours if r.planday_hours is not None else "",
-        r.hours_diff if r.hours_diff is not None else ""
-    ] for r in req.rows]
-    ok = append_rows(values)
-    return {"status": "ok" if ok else "skipped", "rows": len(values)}
+
+class DayDelta(BaseModel):
+    day: int
+    count: int
+    average_difference: float | None
+    median_difference: float | None
+    sum_difference: float
+    average_predicted: float | None
+    average_actual: float | None
+
+
+class ReconcileResponse(BaseModel):
+    logs_analyzed: int
+    targets: List[int]
+    totals: Dict[str, float]
+    days: List[DayDelta]
+
+
+def _collect_differences(entries: List[dict]) -> Dict[int, List[dict]]:
+    bucket: Dict[int, List[dict]] = {day: [] for day in _TARGET_DAYS}
+    for entry in entries:
+        rows = entry.get("rows") or []
+        for index, row in enumerate(rows, start=1):
+            if index not in bucket:
+                continue
+            actual = row.get("revenue_actual")
+            predicted = row.get("revenue_pred")
+            if actual is None or predicted is None:
+                continue
+            bucket[index].append(
+                {
+                    "forecast_date": entry.get("forecast_date"),
+                    "date": row.get("date"),
+                    "predicted": float(predicted),
+                    "actual": float(actual),
+                    "difference": float(actual) - float(predicted),
+                }
+            )
+    return bucket
+
+
+def _aggregate(bucket: Dict[int, List[dict]]) -> List[DayDelta]:
+    days: List[DayDelta] = []
+    for day in _TARGET_DAYS:
+        records = bucket.get(day) or []
+        if not records:
+            days.append(
+                DayDelta(
+                    day=day,
+                    count=0,
+                    average_difference=None,
+                    median_difference=None,
+                    sum_difference=0.0,
+                    average_predicted=None,
+                    average_actual=None,
+                )
+            )
+            continue
+        diffs = [rec["difference"] for rec in records]
+        preds = [rec["predicted"] for rec in records]
+        actuals = [rec["actual"] for rec in records]
+        days.append(
+            DayDelta(
+                day=day,
+                count=len(records),
+                average_difference=mean(diffs),
+                median_difference=median(diffs),
+                sum_difference=sum(diffs),
+                average_predicted=mean(preds),
+                average_actual=mean(actuals),
+            )
+        )
+    return days
+
+
+@router.post("", response_model=ReconcileResponse)
+def reconcile(req: ReconcileRequest) -> ReconcileResponse:
+    entries = read_recent_forecasts(limit=req.limit)
+    bucket = _collect_differences(entries)
+    day_metrics = _aggregate(bucket)
+
+    totals = {
+        "predicted": 0.0,
+        "actual": 0.0,
+        "difference": 0.0,
+    }
+    for records in bucket.values():
+        for rec in records:
+            totals["predicted"] += rec["predicted"]
+            totals["actual"] += rec["actual"]
+            totals["difference"] += rec["difference"]
+
+    return ReconcileResponse(
+        logs_analyzed=len(entries),
+        targets=list(_TARGET_DAYS),
+        totals=totals,
+        days=day_metrics,
+    )

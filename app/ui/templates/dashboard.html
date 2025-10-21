@@ -23,7 +23,34 @@
         .warning { background: rgba(234,179,8,0.16); border-left: 4px solid #facc15; padding: 0.75rem 1rem; border-radius: 6px; margin-bottom: 0.75rem; }
         .controls .row { margin-bottom: 0.75rem; }
         .footer { margin: 4rem 0 2rem; text-align: center; color: #777; font-size: 0.9rem; }
-        #chatkit-host { margin-top: 2rem; padding: 1.5rem; border: 2px dashed rgba(15,107,189,0.35); border-radius: 12px; text-align: center; background: rgba(15,107,189,0.05); }
+        #agent-panel { margin-top: 1.2rem; }
+        .agent-messages { background: radial-gradient(circle at top, rgba(15,107,189,0.06), rgba(15,107,189,0.01)); border: 1px solid rgba(15,107,189,0.15); border-radius: 18px; padding: 1.25rem; max-height: 360px; overflow-y: auto; display: flex; flex-direction: column; gap: 0.85rem; box-shadow: inset 0 0 30px rgba(15,107,189,0.05); }
+        .agent-message { display: flex; flex-direction: column; gap: 0.35rem; transition: transform 0.2s ease, opacity 0.2s ease; }
+        .agent-message.agent-live { transform: translateY(-2px); opacity: 0.95; }
+        .agent-bubble { display: inline-flex; align-items: flex-start; max-width: 82%; padding: 0.85rem 1.05rem; border-radius: 18px; box-shadow: 0 12px 34px rgba(15,107,189,0.14); backdrop-filter: blur(6px); white-space: pre-wrap; line-height: 1.45; font-size: 0.98rem; position: relative; }
+        .agent-meta { font-size: 0.75rem; color: rgba(17, 24, 39, 0.5); text-transform: uppercase; letter-spacing: 0.08em; }
+        .agent-message.agent-user { align-items: flex-end; }
+        .agent-message.agent-user .agent-bubble { background: linear-gradient(135deg, #0F6CBD, #2563EB); color: #fff; border-bottom-right-radius: 6px; }
+        .agent-message.agent-assistant { align-items: flex-start; }
+        .agent-message.agent-assistant .agent-bubble { background: rgba(255,255,255,0.95); border: 1px solid rgba(15,107,189,0.12); border-bottom-left-radius: 6px; color: #0f172a; }
+        .agent-message.agent-system .agent-bubble { background: rgba(185, 28, 28, 0.12); border: 1px solid rgba(185, 28, 28, 0.2); color: #7f1d1d; }
+        .agent-form { display: flex; gap: 0.75rem; margin-top: 1rem; align-items: flex-end; }
+        .agent-form textarea { flex: 1; resize: vertical; border-radius: 14px; border: 1px solid rgba(15,107,189,0.25); padding: 0.9rem 1rem; box-shadow: inset 0 2px 12px rgba(15,107,189,0.08); font-size: 0.95rem; }
+        .agent-form textarea:focus { outline: none; border-color: #2563EB; box-shadow: 0 0 0 3px rgba(37,99,235,0.15); }
+        .agent-form button { border-radius: 12px; padding: 0.75rem 1.4rem; box-shadow: 0 12px 32px rgba(37,99,235,0.22); }
+        .agent-typing { font-size: 0.85rem; color: rgba(37,99,235,0.7); display: flex; align-items: center; gap: 0.4rem; }
+        .agent-typing-dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; opacity: 0.4; animation: typing 1.2s infinite ease-in-out; }
+        .agent-typing-dot:nth-child(2) { animation-delay: 0.2s; }
+        .agent-typing-dot:nth-child(3) { animation-delay: 0.4s; }
+        @keyframes typing { 0%, 80%, 100% { opacity: 0.2; transform: translateY(0); } 40% { opacity: 1; transform: translateY(-3px); } }
+        .similar-controls { display: inline-flex; align-items: center; gap: 0.75rem; justify-content: flex-end; width: 100%; }
+        .similar-grid { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); margin-top: 1.5rem; }
+        .similar-card { background: linear-gradient(180deg, rgba(15,107,189,0.08), rgba(15,107,189,0.02)); border: 1px solid rgba(37, 99, 235, 0.15); border-radius: 16px; padding: 1rem 1.2rem; box-shadow: 0 18px 35px rgba(15,107,189,0.12); display: flex; flex-direction: column; gap: 0.65rem; }
+        .similar-card h5 { margin: 0; font-size: 1rem; color: #0f172a; }
+        .similar-card .similar-date { font-size: 0.95rem; font-weight: 600; color: #2563eb; }
+        .similar-card ul { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 0.35rem; font-size: 0.88rem; }
+        .similar-card li span { font-weight: 600; }
+        .similar-summary { margin-top: 0.75rem; font-size: 0.95rem; color: #334155; }
         .log-list { list-style: none; padding-left: 0; margin-top: 1rem; }
         .log-list li { border-bottom: 1px solid #e5e5ea; padding: 0.75rem 0; }
         .log-meta { font-size: 0.85rem; color: #555; display: flex; gap: 0.75rem; flex-wrap: wrap; }
@@ -130,16 +157,40 @@
             <ul id="log-entries" class="log-list"></ul>
         </section>
 
+        <section class="panel" id="similar-panel">
+            <div class="row">
+                <div class="six columns">
+                    <h4>Hvilke dage ligner denne?</h4>
+                    <p>Find historiske dage med lignende vejr- og omsætningsmønstre.</p>
+                </div>
+                <div class="six columns" style="text-align:right;">
+                    <label for="similar-date" style="display:block;">Dato</label>
+                    <div class="similar-controls">
+                        <input id="similar-date" type="date" value="{{ default_start }}">
+                        <button id="similar-refresh" class="button">Analyser</button>
+                    </div>
+                </div>
+            </div>
+            <div id="similar-summary" class="similar-summary">Vælg en dato for at se lignende dage.</div>
+            <div id="similar-results" class="similar-grid"></div>
+        </section>
+
         <section class="panel">
             <div class="row">
                 <div class="six columns">
                     <h4>Café-rådgiver</h4>
-                    <p>Stil spørgsmål om bemanding og drift – svar leveres af OpenAI.</p>
+                    <p>Stil spørgsmål om bemanding og drift – svar leveres af OpenAI-agenten.</p>
                 </div>
             </div>
-            <div id="chatkit-host" data-config-url="/chat/config" data-openai-ready="{{ 'true' if openai_ready else 'false' }}">
-                {% if not openai_ready %}
-                    <p>Chat-widget placeholder. Når du tilføjer din OpenAI-nøgle, vil <code>/chat/config</code> returnere <code>ready=true</code>.</p>
+            <div id="agent-panel" data-ready="{{ 'true' if openai_ready else 'false' }}">
+                {% if openai_ready %}
+                    <div id="agent-messages" class="agent-messages"></div>
+                    <form id="agent-form" class="agent-form">
+                        <textarea id="agent-input" rows="3" placeholder="Skriv din besked…" required></textarea>
+                        <button type="submit" class="button-primary" id="agent-send">Send</button>
+                    </form>
+                {% else %}
+                    <p>Tilføj din <code>OPENAI_API_KEY</code> for at aktivere chatten.</p>
                 {% endif %}
             </div>
         </section>
@@ -347,85 +398,202 @@
         renderTable(initialData);
         loadLogs();
 
-        const chatKitHost = document.getElementById("chatkit-host");
-        if (chatKitHost && chatKitHost.dataset.openaiReady === "true") {
-            import("https://cdn.jsdelivr.net/npm/@openai/chat-components@0.2.2/+esm")
-                .then((mod) => {
-                    const { ChatKit } = mod || {};
-                    if (!ChatKit) {
-                        return;
-                    }
-                    chatKitHost.innerHTML = "";
-                    ChatKit.mount({
-                        element: chatKitHost,
-                        config: {
-                            title: "Café-rådgiveren",
-                            subtitle: "Spørg ind til bemanding, drift og vejr",
-                            placeholder: "Spørg fx: Hvordan planlægger vi weekenden?",
-                        },
-                        async fetchChatCompletions({ messages }) {
-                            const normalized = (messages || []).map((message) => {
-                                if (!message || !message.content) {
-                                    return { role: message.role, content: "" };
-                                }
-                                const parts = Array.isArray(message.content)
-                                    ? message.content
-                                    : [{ type: "text", text: String(message.content) }];
-                                const text = parts
-                                    .map((part) => {
-                                        if (!part) return "";
-                                        if (typeof part === "string") return part;
-                                        if (part.text) return part.text;
-                                        if (part.input_text) return part.input_text;
-                                        return "";
-                                    })
-                                    .filter(Boolean)
-                                    .join("\n")
-                                    .trim();
-                                return {
-                                    role: message.role,
-                                    content: text,
-                                };
-                            });
+        const similarResultsEl = document.getElementById("similar-results");
+        const similarSummaryEl = document.getElementById("similar-summary");
+        const similarDateInput = document.getElementById("similar-date");
+        const similarRefreshBtn = document.getElementById("similar-refresh");
 
-                            const response = await fetch("/chat", {
-                                method: "POST",
-                                headers: { "Content-Type": "application/json" },
-                                body: JSON.stringify({ messages: normalized }),
-                            });
-                            if (!response.ok) {
-                                throw new Error(await response.text());
-                            }
-                            const data = await response.json();
-                            return {
-                                id: `chatcmpl-${Date.now()}`,
-                                object: "chat.completion",
-                                created: Math.floor(Date.now() / 1000),
-                                model: "gpt-4o-mini",
-                                choices: [
-                                    {
-                                        index: 0,
-                                        message: {
-                                            role: "assistant",
-                                            content: [
-                                                {
-                                                    type: "text",
-                                                    text: data.reply,
-                                                },
-                                            ],
-                                        },
-                                        finish_reason: "stop",
-                                    },
-                                ],
-                            };
-                        },
+        function formatHours(seconds) {
+            if (seconds == null) return "—";
+            const hours = Number(seconds) / 3600;
+            return `${formatNumber(hours)} t`;
+        }
+
+        function renderSimilar(data) {
+            if (!similarResultsEl || !similarSummaryEl) {
+                return;
+            }
+            const matches = data.matches || [];
+            if (!matches.length) {
+                similarSummaryEl.textContent = "Ingen historiske dage matcher kriterierne.";
+                similarResultsEl.innerHTML = "";
+                return;
+            }
+            const target = data.target || {};
+            const targetDate = target.date ? new Date(target.date) : null;
+            const targetLabel = targetDate
+                ? targetDate.toLocaleDateString("da-DK", { weekday: "long", day: "numeric", month: "long", year: "numeric" })
+                : "Ukendt dato";
+            similarSummaryEl.textContent = `Udgangspunkt: ${targetLabel} · Regn ${formatNumber(target.rain || 0)} mm · Sol ${formatHours(target.sunshine_duration || 0)} · Temp ${formatNumber(target.temperature_2m || 0)} °C`;
+
+            similarResultsEl.innerHTML = matches.map(match => {
+                const matchDate = match.date ? new Date(match.date) : null;
+                const dateLabel = matchDate
+                    ? matchDate.toLocaleDateString("da-DK", { weekday: "short", day: "numeric", month: "short", year: "numeric" })
+                    : match.date;
+                return `
+                    <article class="similar-card">
+                        <h5>${match.label}</h5>
+                        <div class="similar-date">${dateLabel}</div>
+                        <ul>
+                            <li><span>Regn:</span> ${formatNumber(match.rain || 0)} mm</li>
+                            <li><span>Sol:</span> ${formatHours(match.sunshine_duration || 0)}</li>
+                            <li><span>Temp:</span> ${formatNumber(match.temperature_2m || 0)} °C</li>
+                            <li><span>Uge:</span> ${match.week || "—"} · ${match.weekday || ""}</li>
+                        </ul>
+                    </article>
+                `;
+            }).join("");
+        }
+
+        async function loadSimilarDays(dateValue) {
+            if (!similarSummaryEl || !similarResultsEl) return;
+            if (!dateValue) {
+                similarSummaryEl.textContent = "Vælg en gyldig dato.";
+                return;
+            }
+            similarSummaryEl.textContent = "Finder lignende dage…";
+            similarResultsEl.innerHTML = "";
+            try {
+                const response = await fetch(`/history/similar?date=${encodeURIComponent(dateValue)}`);
+                if (!response.ok) {
+                    throw new Error(await response.text());
+                }
+                const payload = await response.json();
+                renderSimilar(payload);
+            } catch (error) {
+                similarSummaryEl.textContent = `Kunne ikke hente lignende dage: ${error.message}`;
+            }
+        }
+
+        if (similarRefreshBtn && similarDateInput) {
+            similarRefreshBtn.addEventListener("click", () => {
+                loadSimilarDays(similarDateInput.value);
+            });
+            similarDateInput.addEventListener("change", () => loadSimilarDays(similarDateInput.value));
+            if (similarDateInput.value) {
+                loadSimilarDays(similarDateInput.value);
+            }
+        }
+
+        const agentPanel = document.getElementById("agent-panel");
+        if (agentPanel && agentPanel.dataset.ready === "true") {
+            const threadId = crypto.randomUUID();
+            const messagesEl = document.getElementById("agent-messages");
+                    const formEl = document.getElementById("agent-form");
+                    const inputEl = document.getElementById("agent-input");
+                    const sendBtn = document.getElementById("agent-send");
+                    let typingEl = null;
+
+                    function appendMessage(role, content) {
+                        const row = document.createElement("div");
+                        row.className = `agent-message agent-${role}`;
+                        const meta = document.createElement("div");
+                        meta.className = "agent-meta";
+                        meta.textContent = role === "user" ? "Du" : role === "assistant" ? "Café-rådgiver" : "System";
+                        const bubble = document.createElement("div");
+                        bubble.className = "agent-bubble";
+                        bubble.textContent = content;
+                        row.appendChild(meta);
+                        row.appendChild(bubble);
+                        messagesEl.appendChild(row);
+                        messagesEl.scrollTop = messagesEl.scrollHeight;
+                    }
+
+                    function showTyping() {
+                        if (typingEl) return;
+                        const wrapper = document.createElement("div");
+                        wrapper.className = "agent-message agent-assistant";
+                        typingEl = wrapper;
+                        const meta = document.createElement("div");
+                        meta.className = "agent-meta";
+                        meta.textContent = "Café-rådgiver";
+                        const bubble = document.createElement("div");
+                        bubble.className = "agent-bubble agent-typing";
+                        bubble.innerHTML = '<span class="agent-typing-dot"></span><span class="agent-typing-dot"></span><span class="agent-typing-dot"></span>';
+                        wrapper.appendChild(meta);
+                        wrapper.appendChild(bubble);
+                        messagesEl.appendChild(wrapper);
+                        messagesEl.scrollTop = messagesEl.scrollHeight;
+                    }
+
+                    function hideTyping() {
+                        if (!typingEl) return;
+                        typingEl.remove();
+                        typingEl = null;
+                    }
+
+                    async function streamAgentMessage(message) {
+                        appendMessage("user", message);
+                        sendBtn.disabled = true;
+                        let buffer = "";
+                        let assistantChunk = "";
+                try {
+                    const response = await fetch("/agent/chat", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ message, thread_id: threadId }),
                     });
-                })
-                .catch((error) => {
-                    console.warn("ChatKit kunne ikke indlæses", error);
-                    chatKitHost.innerHTML = "<p>ChatKit kunne ikke indlæses. Prøv at opdatere siden.</p>";
-                });
+                    if (!response.ok || !response.body) {
+                        throw new Error(`Agentfejl: ${response.status}`);
+                    }
+                    const reader = response.body.getReader();
+                    const decoder = new TextDecoder("utf-8");
+                    while (true) {
+                        const { value, done } = await reader.read();
+                        if (done) break;
+                        buffer += decoder.decode(value, { stream: true });
+                        let endIdx;
+                        while ((endIdx = buffer.indexOf("\n\n")) >= 0) {
+                            const raw = buffer.slice(0, endIdx).trim();
+                            buffer = buffer.slice(endIdx + 2);
+                            if (!raw.startsWith("data:")) continue;
+                            const payloadTxt = raw.slice(5).trim();
+                            if (!payloadTxt) continue;
+                            let payload;
+                            try {
+                                payload = JSON.parse(payloadTxt);
+                            } catch {
+                                continue;
+                            }
+                            if (payload.event === "done") {
+                                if (assistantChunk) {
+                                    appendMessage("assistant", assistantChunk.trim());
+                                }
+                                assistantChunk = "";
+                                continue;
+                            }
+                            if (payload.content) {
+                                assistantChunk += `${payload.content} `;
+                                hideTyping();
+                                appendMessage("assistant", assistantChunk.trim());
+                                messagesEl.lastChild.classList.add("agent-live");
+                                assistantChunk = "";
+                            }
+                        }
+                    }
+                    hideTyping();
+                    if (assistantChunk.trim()) {
+                        appendMessage("assistant", assistantChunk.trim());
+                    }
+                } catch (error) {
+                    hideTyping();
+                    appendMessage("system", `Kunne ikke kontakte agenten: ${error.message}`);
+                } finally {
+                    sendBtn.disabled = false;
+                }
+            }
+
+            formEl?.addEventListener("submit", (event) => {
+                event.preventDefault();
+                const message = inputEl.value.trim();
+                if (!message) return;
+                inputEl.value = "";
+                showTyping();
+                streamAgentMessage(message);
+            });
         }
     </script>
+
 </body>
 </html>

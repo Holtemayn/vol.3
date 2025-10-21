@@ -8,8 +8,10 @@ joblib
 xgboost
 python-dotenv
 requests
+httpx
 jinja2
 openai
+pymongo[srv]
 # DB (valgfrit nu, klar til senere)
 SQLAlchemy
 psycopg2-binary

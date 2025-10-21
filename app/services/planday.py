@@ -88,7 +88,9 @@ def get_planday_revenue_for_dates(dates: List[date]) -> Dict[date, float | None]
         )
         response.raise_for_status()
         payload = response.json() or {}
-        records = payload.get("data") or []
+        records = _ensure_list(payload, list_keys=("data", "items", "results", "records", "entries"))
+        if not records:
+            LOGGER.warning("Planday revenue endpoint returned no records: keys=%s", list(payload.keys()))
     except Exception as exc:  # pragma: no cover - afhænger af API
         LOGGER.warning("Planday revenue fetch failed: %s", exc)
         return {d: None for d in dates}

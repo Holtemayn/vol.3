@@ -52,6 +52,12 @@ class Settings(BaseSettings):
     DATABASE_URL: str | None = Field(default=None)
     OPENAI_API_KEY: str | None = None
     FORECAST_LOG_PATH: str = "./logs/forecast.log"
+    INTERNAL_BASE_URL: str | None = None
+    AGENT_MODEL: str = "gpt-4o-mini"
+    AGENT_MAX_OUTPUT_TOKENS: int = 600
+    MONGO_URI: str | None = None
+    MONGO_DB_NAME: str = "cafecaster"
+    MONGO_DAILY_COLLECTION: str = "daily_aggregates"
 
     model_config = SettingsConfigDict(env_file=".env", extra="allow")
 
