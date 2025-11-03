@@ -8,6 +8,7 @@ from fastapi.templating import Jinja2Templates
 
 from app.api.routes_chat import router as chat_router
 from app.api.routes_forecast import router as forecast_router
+from app.api.routes_calendar import router as calendar_router
 from app.api.routes_logs import router as logs_router
 from app.api.routes_planday import router as planday_router
 from app.api.routes_reconcile import router as reconcile_router
@@ -20,6 +21,7 @@ app = FastAPI(title="CaféCaster v3")
 templates = Jinja2Templates(directory="app/ui/templates")
 
 app.include_router(forecast_router, prefix="/forecast", tags=["forecast"])
+app.include_router(calendar_router, prefix="/calendar", tags=["calendar"])
 app.include_router(logs_router, prefix="/logs", tags=["logs"])
 app.include_router(planday_router, prefix="/planday", tags=["planday"])
 app.include_router(reconcile_router, prefix="/reconcile", tags=["reconcile"])

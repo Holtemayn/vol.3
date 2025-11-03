@@ -56,6 +56,18 @@
         .similar-card .similar-weather span strong { display: block; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.05em; color: rgba(17, 24, 39, 0.55); }
         .similar-card .similar-weather span em { display: block; font-style: normal; font-weight: 600; color: #0f172a; margin-top: 0.2rem; }
         .similar-card .similar-diff { font-size: 0.8rem; color: rgba(15,23,42,0.7); }
+        #calendar-panel .calendar-meta { display: flex; flex-wrap: wrap; gap: 1rem; align-items: center; justify-content: space-between; margin-top: 1rem; }
+        #calendar-panel .calendar-error { color: #b91c1c; margin-top: 0.5rem; font-weight: 600; }
+        #calendar-table { width: 100%; border-collapse: collapse; margin-top: 1rem; }
+        #calendar-table thead th { text-align: center; background: linear-gradient(90deg, rgba(37, 99, 235, 0.15), rgba(37, 99, 235, 0.02)); padding: 0.75rem; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; font-size: 0.85rem; }
+        #calendar-table tbody td { border-bottom: 1px solid #e5e5ea; padding: 0.85rem 0.5rem; text-align: center; min-width: 110px; }
+        .calendar-week-label { font-weight: 600; text-align: left !important; white-space: nowrap; }
+        .calendar-sum { font-weight: 600; color: #0f172a; }
+        .calendar-day { display: flex; flex-direction: column; gap: 0.25rem; align-items: center; justify-content: center; }
+        .calendar-day-date { font-size: 0.75rem; color: rgba(15,107,189,0.7); letter-spacing: 0.08em; text-transform: uppercase; }
+        .calendar-day-value { font-size: 0.95rem; font-weight: 600; color: #0f172a; }
+        .calendar-day-wage { font-size: 0.75rem; color: rgba(15,107,189,0.8); }
+        .calendar-day-empty { color: #cbd5f5; }
         .similar-summary { margin-top: 0.75rem; font-size: 0.95rem; color: #334155; }
         .log-list { list-style: none; padding-left: 0; margin-top: 1rem; }
         .log-list li { border-bottom: 1px solid #e5e5ea; padding: 0.75rem 0; }
@@ -145,6 +157,61 @@
                             <th>☀️ Sol</th>
                             <th>🌧️ Nedbør</th>
                             <th>🌡️ Temp</th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                </table>
+            </div>
+        </section>
+
+        <section class="panel" id="calendar-panel">
+            <div class="row">
+                <div class="six columns">
+                    <h4>Kalender-forecast (Y)</h4>
+                    <p>Viser dagsomsætning og lønbudget fordelt på ISO-uger. Kolonner er mandag til søndag, rækker er uge for uge.</p>
+                </div>
+                <div class="six columns">
+                    <form id="calendar-form" class="calendar-form">
+                        <div class="row">
+                            <div class="four columns">
+                                <label for="calendar-start">Startdato</label>
+                                <input type="date" id="calendar-start" name="start_date" value="{{ default_start }}">
+                            </div>
+                            <div class="four columns">
+                                <label for="calendar-horizon">Horisont (7-60)</label>
+                                <input type="number" id="calendar-horizon" name="horizon_days" value="30" min="7" max="60">
+                            </div>
+                            <div class="four columns">
+                                <label for="calendar-wage">Løn%</label>
+                                <input type="number" id="calendar-wage" name="wage_pct" value="0.25" min="0.10" max="0.50" step="0.01">
+                            </div>
+                        </div>
+                        <div class="row" style="margin-top:0.5rem;">
+                            <div class="twelve columns" style="text-align:right;">
+                                <button type="submit" class="button-primary">Opdatér kalender</button>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+            </div>
+            <div class="calendar-meta">
+                <div id="calendar-summary"></div>
+                <div id="calendar-meta-totals"></div>
+            </div>
+            <div id="calendar-error" class="calendar-error"></div>
+            <div class="table-wrapper">
+                <table id="calendar-table">
+                    <thead>
+                        <tr>
+                            <th>Uge</th>
+                            <th>Y (sum)</th>
+                            <th>Mandag</th>
+                            <th>Tirsdag</th>
+                            <th>Onsdag</th>
+                            <th>Torsdag</th>
+                            <th>Fredag</th>
+                            <th>Lørdag</th>
+                            <th>Søndag</th>
                         </tr>
                     </thead>
                     <tbody></tbody>
@@ -263,6 +330,11 @@
         const hgbMetricsEl = document.getElementById("hgb-metrics");
         const hgbHistoryEl = document.getElementById("hgb-history");
         const hgbSourceEl = document.getElementById("hgb-source");
+        const calendarForm = document.getElementById("calendar-form");
+        const calendarTableBody = document.querySelector("#calendar-table tbody");
+        const calendarErrorEl = document.getElementById("calendar-error");
+        const calendarSummaryEl = document.getElementById("calendar-summary");
+        const calendarTotalsEl = document.getElementById("calendar-meta-totals");
 
         function formatNumber(value) {
             return new Intl.NumberFormat("da-DK", { maximumFractionDigits: 1 }).format(value);
@@ -270,6 +342,10 @@
 
         function formatCurrency(value) {
             return new Intl.NumberFormat("da-DK", { maximumFractionDigits: 0 }).format(value);
+        }
+
+        function formatTwoDecimals(value) {
+            return new Intl.NumberFormat("da-DK", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value);
         }
 
         function buildForecastPayload(form) {
@@ -290,6 +366,16 @@
                 warningStack.appendChild(div);
             });
         }
+
+        const calendarWeekdays = [
+            { iso: 1, label: "Man" },
+            { iso: 2, label: "Tir" },
+            { iso: 3, label: "Ons" },
+            { iso: 4, label: "Tor" },
+            { iso: 5, label: "Fre" },
+            { iso: 6, label: "Lør" },
+            { iso: 7, label: "Søn" },
+        ];
 
         function renderHgbWarnings(warnings) {
             if (!hgbWarningsEl) return;
@@ -394,6 +480,170 @@
             renderHgbWarnings(payload ? payload.warnings : []);
             renderHgbMetrics(payload ? payload.metrics : null);
             renderHgbHistory(payload ? payload.history_coverage : null, payload ? payload.feature_columns : null);
+        }
+
+        function renderCalendar(payload) {
+            if (!calendarTableBody) return;
+            const data = payload || {};
+            const daily = Array.isArray(data.daily) ? data.daily : [];
+            const weekly = Array.isArray(data.weekly) ? data.weekly : [];
+            const meta = data.meta || null;
+
+            const dailyByWeek = new Map();
+            daily.forEach((item) => {
+                const key = `${item.iso_year}-${String(item.iso_week).padStart(2, "0")}`;
+                if (!dailyByWeek.has(key)) {
+                    dailyByWeek.set(key, new Map());
+                }
+                dailyByWeek.get(key).set(item.iso_weekday, item);
+            });
+
+            calendarTableBody.innerHTML = "";
+
+            if (!weekly.length) {
+                const tr = document.createElement("tr");
+                tr.innerHTML = `<td colspan="9">Ingen data i intervallet.</td>`;
+                calendarTableBody.appendChild(tr);
+            } else {
+                weekly.forEach((week) => {
+                    const key = `${week.iso_year}-${String(week.iso_week).padStart(2, "0")}`;
+                    const dayMap = dailyByWeek.get(key) || new Map();
+                    const cells = calendarWeekdays.map(({ iso, label }) => {
+                        const day = dayMap.get(iso);
+                        if (!day) {
+                            return `<td><div class="calendar-day calendar-day-empty">—</div></td>`;
+                        }
+                        const dayDate = new Date(day.date);
+                        const dateText = dayDate.toLocaleDateString("da-DK", { day: "2-digit", month: "short" });
+                        const forecastText = day.forecast != null ? formatTwoDecimals(day.forecast) : "—";
+                        const wageText = day.wage != null ? formatTwoDecimals(day.wage) : null;
+                        const wageLine = wageText ? `<span class="calendar-day-wage">${wageText} løn</span>` : "";
+                        const classes = ["calendar-day"];
+                        if (day.forecast == null) {
+                            classes.push("calendar-day-empty");
+                        }
+                        return `<td>
+                            <div class="${classes.join(" ")}">
+                                <span class="calendar-day-date">${label} ${dateText}</span>
+                                <span class="calendar-day-value">${forecastText}</span>
+                                ${wageLine}
+                            </div>
+                        </td>`;
+                    }).join("");
+                    const tr = document.createElement("tr");
+                    const sumText = week.sum_forecast != null ? formatTwoDecimals(week.sum_forecast) : "—";
+                    tr.innerHTML = `
+                        <td class="calendar-week-label">Uge ${week.iso_week} · ${week.iso_year}</td>
+                        <td class="calendar-sum">${sumText}</td>
+                        ${cells}
+                    `;
+                    calendarTableBody.appendChild(tr);
+                });
+            }
+
+            if (calendarErrorEl) {
+                calendarErrorEl.textContent = "";
+            }
+            if (calendarSummaryEl && meta) {
+                const intervalText = `${meta.start_date} → ${meta.end_date}`;
+                calendarSummaryEl.textContent = `Interval: ${intervalText} · Dage: ${meta.n_days_forecasted}/${meta.n_days}`;
+            }
+            if (calendarTotalsEl && meta) {
+                const totalForecast = meta.total_forecast != null ? formatTwoDecimals(meta.total_forecast) : "—";
+                const totalWage = meta.total_wage != null ? formatTwoDecimals(meta.total_wage) : "—";
+                const wagePct = meta.wage_pct != null ? (meta.wage_pct * 100).toFixed(0) : "—";
+                calendarTotalsEl.textContent = `Total Y: ${totalForecast} · Løn: ${totalWage} · Løn%: ${wagePct}%`;
+            }
+        }
+
+        function showCalendarError(message) {
+            if (calendarErrorEl) {
+                calendarErrorEl.textContent = message;
+            }
+            if (calendarSummaryEl) {
+                calendarSummaryEl.textContent = "";
+            }
+            if (calendarTotalsEl) {
+                calendarTotalsEl.textContent = "";
+            }
+            if (calendarTableBody) {
+                calendarTableBody.innerHTML = `<tr><td colspan="9">Ingen data</td></tr>`;
+            }
+        }
+
+        async function loadCalendarForecast() {
+            if (!calendarForm) return;
+            const payload = {
+                start_date: calendarForm.start_date.value,
+                horizon_days: Number(calendarForm.horizon_days.value),
+                wage_pct: Number(calendarForm.wage_pct.value),
+            };
+
+            if (!payload.start_date) {
+                payload.start_date = new Date().toISOString().slice(0, 10);
+                calendarForm.start_date.value = payload.start_date;
+            }
+
+            if (Number.isNaN(payload.horizon_days)) {
+                showCalendarError("Angiv en horisont mellem 7 og 60 dage.");
+                return;
+            }
+            if (payload.horizon_days < 7 || payload.horizon_days > 60) {
+                showCalendarError("Horisont skal være mellem 7 og 60 dage.");
+                return;
+            }
+            if (Number.isNaN(payload.wage_pct)) {
+                showCalendarError("Angiv en gyldig lønprocent (0.10-0.50).");
+                return;
+            }
+            if (payload.wage_pct < 0.10 || payload.wage_pct > 0.50) {
+                showCalendarError("Lønprocent skal være mellem 0.10 og 0.50.");
+                return;
+            }
+
+            if (calendarTableBody) {
+                calendarTableBody.innerHTML = `<tr><td colspan="9">Henter kalender…</td></tr>`;
+            }
+            if (calendarSummaryEl) {
+                calendarSummaryEl.textContent = "Henter kalender…";
+            }
+            if (calendarTotalsEl) {
+                calendarTotalsEl.textContent = "";
+            }
+            if (calendarErrorEl) {
+                calendarErrorEl.textContent = "";
+            }
+
+            try {
+                const response = await fetch("/calendar", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(payload),
+                });
+                if (!response.ok) {
+                    const text = await response.text();
+                    let message = text || `HTTP ${response.status}`;
+                    try {
+                        const parsed = JSON.parse(text);
+                        if (Array.isArray(parsed.detail)) {
+                            message = parsed.detail
+                                .map((item) => item.msg || item.detail || item)
+                                .join(", ");
+                        } else if (parsed.detail) {
+                            message = typeof parsed.detail === "string"
+                                ? parsed.detail
+                                : JSON.stringify(parsed.detail);
+                        }
+                    } catch (parseError) {
+                        // ignore
+                    }
+                    throw new Error(message);
+                }
+                const data = await response.json();
+                renderCalendar(data);
+            } catch (error) {
+                showCalendarError(`Kunne ikke hente kalender: ${error.message}`);
+            }
         }
 
         async function loadHgbForecast(payload) {
@@ -601,6 +851,13 @@
         const forecastForm = document.getElementById("forecast-form");
         if (forecastForm) {
             forecastForm.addEventListener("submit", submitForm);
+        }
+        if (calendarForm) {
+            calendarForm.addEventListener("submit", (event) => {
+                event.preventDefault();
+                loadCalendarForecast();
+            });
+            loadCalendarForecast();
         }
         document.getElementById("refresh-log").addEventListener("click", () => loadLogs());
         document.getElementById("log-limit").addEventListener("change", () => loadLogs());
