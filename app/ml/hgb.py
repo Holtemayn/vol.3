@@ -4,10 +4,14 @@ import json
 import math
 from functools import lru_cache
 from pathlib import Path
-from typing import Any, Dict, Iterable, List
+from typing import Any, Dict, Iterable, List, Optional
 
 import joblib
 import pandas as pd
+from pymongo import MongoClient
+from pymongo.errors import PyMongoError
+
+from app.core.config import settings
 
 _BASE_DIR = Path(__file__).resolve().parent
 _HGB_DIR = _BASE_DIR / "HGB"
@@ -44,8 +48,7 @@ def _load_model():
     return joblib.load(_MODEL_PATH)
 
 
-@lru_cache
-def _load_history_frame() -> pd.DataFrame:
+def _load_history_from_file() -> pd.DataFrame:
     if not _HISTORY_PATH.exists():
         raise FileNotFoundError(f"Historiske data ikke fundet: {_HISTORY_PATH}")
     rows: List[Dict[str, Any]] = []
@@ -72,6 +75,58 @@ def _load_history_frame() -> pd.DataFrame:
         raise ValueError(f"Ingen rækker i {_HISTORY_PATH}")
     frame = frame.drop_duplicates(subset=["date"]).sort_values("date").reset_index(drop=True)
     return frame
+
+
+def _load_history_from_mongo() -> Optional[pd.DataFrame]:
+    mongo_uri = settings.MONGO_URI
+    if not mongo_uri:
+        return None
+    try:
+        client = MongoClient(mongo_uri)
+    except Exception:
+        return None
+    try:
+        db = client[settings.MONGO_DB_NAME]
+        collection = db[settings.MONGO_DAILY_COLLECTION]
+        cursor = collection.find({}, projection={"_id": False}).sort("dato", 1)
+        rows: List[Dict[str, Any]] = []
+        for doc in cursor:
+            raw_date = doc.get("dato")
+            if raw_date is None:
+                continue
+            if isinstance(raw_date, dict):
+                raw_date = raw_date.get("$date")
+            if hasattr(raw_date, "to_datetime"):
+                dt = pd.to_datetime(raw_date.to_datetime()).tz_localize(None)
+            else:
+                dt = pd.to_datetime(raw_date).tz_localize(None)
+            doc_copy = dict(doc)
+            doc_copy.pop("_id", None)
+            doc_copy.pop("dato", None)
+            doc_copy["date"] = dt.floor("D")
+            if "oms" in doc_copy:
+                try:
+                    doc_copy["oms"] = float(doc_copy["oms"]) if doc_copy["oms"] is not None else None
+                except (TypeError, ValueError):
+                    doc_copy["oms"] = None
+            rows.append(doc_copy)
+        frame = pd.DataFrame(rows)
+        if frame.empty:
+            return None
+        frame = frame.drop_duplicates(subset=["date"]).sort_values("date").reset_index(drop=True)
+        return frame
+    except PyMongoError:
+        return None
+    finally:
+        client.close()
+
+
+@lru_cache
+def _load_history_frame() -> pd.DataFrame:
+    mongo_frame = _load_history_from_mongo()
+    if mongo_frame is not None and not mongo_frame.empty:
+        return mongo_frame
+    return _load_history_from_file()
 
 
 def _safe_float(value: Any, default: float = 0.0) -> float:
