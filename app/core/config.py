@@ -15,7 +15,7 @@ class Settings(BaseSettings):
     # ------------------------------------------------------------------
     # Application / model
     MODEL_VERSION: str = "v3.0"
-    MODEL_BACKEND: Literal["xgboost", "regression"] = "regression"
+    MODEL_BACKEND: Literal["xgboost", "regression", "hgb"] = "regression"
     MODEL_PATH: str = "./models/xgb_v3.pkl"
 
     DEFAULT_FORECAST_DAYS: int = 10

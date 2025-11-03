@@ -65,7 +65,10 @@ def generate_forecast(
         wage_pct=wage_pct,
         avg_hourly_wage=avg_hourly_wage,
     )
-    result, _ = _generate_results(context, additional_backends=())
+    result, variants = _generate_results(context, additional_backends=("hgb",))
+    preferred = variants.get("hgb")
+    if preferred and preferred.rows:
+        result = preferred
     _log_forecast_event(
         start_date=start_date,
         horizon_days=horizon_days,
