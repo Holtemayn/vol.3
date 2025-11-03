@@ -5,13 +5,17 @@ import math
 from functools import lru_cache
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional
+from textwrap import dedent
 
 import joblib
 import pandas as pd
 from pymongo import MongoClient
 from pymongo.errors import PyMongoError
+from sqlalchemy import text
+from sqlalchemy.exc import SQLAlchemyError
 
 from app.core.config import settings
+from app.services.db import get_engine
 
 _BASE_DIR = Path(__file__).resolve().parent
 _HGB_DIR = _BASE_DIR / "HGB"
@@ -77,6 +81,93 @@ def _load_history_from_file() -> pd.DataFrame:
     return frame
 
 
+def _load_history_from_postgres() -> Optional[pd.DataFrame]:
+    if not settings.DATABASE_URL:
+        return None
+    try:
+        engine = get_engine()
+    except Exception:
+        return None
+
+    table_name = settings.POSTGRES_DAILY_TABLE
+    view_name = settings.POSTGRES_DAILY_VIEW
+
+    view_sql = dedent(
+        f"""
+        CREATE OR REPLACE VIEW {view_name} AS
+        SELECT
+            dato::date AS date,
+            oms,
+            temperature_2m,
+            wind_gusts_10m,
+            rain,
+            sunshine_duration,
+            EXTRACT(DOW FROM dato)::int + 1 AS weekday_value,
+            EXTRACT(MONTH FROM dato)::int AS month_value,
+            EXTRACT(YEAR FROM dato)::int AS year_value,
+            LAG(oms, 1) OVER w AS lag1,
+            LAG(oms, 7) OVER w AS lag7,
+            AVG(oms) OVER (w ROWS BETWEEN 7 PRECEDING AND 1 PRECEDING) AS ma7
+        FROM {table_name}
+        WINDOW w AS (ORDER BY dato)
+        ORDER BY date;
+        """
+    )
+
+    select_sql = dedent(
+        f"""
+        SELECT
+            date,
+            oms,
+            temperature_2m,
+            wind_gusts_10m,
+            rain,
+            sunshine_duration,
+            weekday_value,
+            month_value,
+            year_value,
+            lag1,
+            lag7,
+            ma7
+        FROM {view_name}
+        ORDER BY date;
+        """
+    )
+
+    try:
+        with engine.begin() as connection:
+            connection.execute(text(view_sql))
+            frame = pd.read_sql_query(text(select_sql), connection)
+    except SQLAlchemyError:
+        return None
+    if frame.empty:
+        return None
+
+    frame = frame.rename(
+        columns={
+            "weekday_value": "ugedag",
+            "month_value": "måned",
+            "year_value": "år",
+        }
+    )
+    frame["date"] = pd.to_datetime(frame["date"]).dt.tz_localize(None)
+    numeric_cols = [
+        "oms",
+        "temperature_2m",
+        "wind_gusts_10m",
+        "rain",
+        "sunshine_duration",
+        "lag1",
+        "lag7",
+        "ma7",
+    ]
+    for col in numeric_cols:
+        if col in frame.columns:
+            frame[col] = pd.to_numeric(frame[col], errors="coerce")
+    frame = frame.sort_values("date").reset_index(drop=True)
+    return frame
+
+
 def _load_history_from_mongo() -> Optional[pd.DataFrame]:
     mongo_uri = settings.MONGO_URI
     if not mongo_uri:
@@ -123,6 +214,9 @@ def _load_history_from_mongo() -> Optional[pd.DataFrame]:
 
 @lru_cache
 def _load_history_frame() -> pd.DataFrame:
+    pg_frame = _load_history_from_postgres()
+    if pg_frame is not None and not pg_frame.empty:
+        return pg_frame
     mongo_frame = _load_history_from_mongo()
     if mongo_frame is not None and not mongo_frame.empty:
         return mongo_frame

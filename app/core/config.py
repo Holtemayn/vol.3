@@ -52,6 +52,8 @@ class Settings(BaseSettings):
     MONGO_URI: str | None = None
     MONGO_DB_NAME: str = "cafecaster"
     MONGO_DAILY_COLLECTION: str = "daily_aggregates"
+    POSTGRES_DAILY_TABLE: str = "daily_aggregates"
+    POSTGRES_DAILY_VIEW: str = "daily_aggregates_with_lags"
 
     model_config = SettingsConfigDict(env_file=".env", extra="allow")
 
