@@ -14,10 +14,13 @@ from pymongo.errors import PyMongoError
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
+import logging
+
 from app.core.config import settings
 from app.services.db import get_engine
 
 _LAST_HISTORY_SOURCE: str | None = None
+LOGGER = logging.getLogger(__name__)
 
 _BASE_DIR = Path(__file__).resolve().parent
 _HGB_DIR = _BASE_DIR / "HGB"
@@ -140,7 +143,8 @@ def _load_history_from_postgres() -> Optional[pd.DataFrame]:
         with engine.begin() as connection:
             connection.execute(text(view_sql))
             frame = pd.read_sql_query(text(select_sql), connection)
-    except SQLAlchemyError:
+    except SQLAlchemyError as exc:
+        LOGGER.warning("HGB Postgres fetch failed: %s", exc)
         return None
     if frame.empty:
         return None
