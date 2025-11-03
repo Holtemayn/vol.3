@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
-from datetime import datetime, date
+from datetime import datetime, date, time, timezone
 from pathlib import Path
 from collections import deque
 from typing import Iterable, TYPE_CHECKING, List, Optional
@@ -24,6 +24,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
+from pymongo import MongoClient, UpdateOne
 
 if TYPE_CHECKING:  # pragma: no cover - kun til type hints
     from app.services.forecast import ForecastResult, ForecastRow
@@ -81,6 +82,59 @@ def _rows_to_serializable(
     return serializable
 
 
+def _sync_planday_actuals_to_mongo(
+    rows: Iterable["ForecastRow"],
+    actuals: Optional[dict[date, float]],
+) -> None:
+    if not settings.MONGO_URI or not actuals:
+        return
+    operations = []
+    for row in rows:
+        actual_value = actuals.get(row.date) if actuals else None
+        if actual_value is None:
+            continue
+        dt = datetime.combine(row.date, time.min, tzinfo=timezone.utc)
+        sunshine_duration = None
+        if row.sunshine_hours is not None:
+            sunshine_duration = float(row.sunshine_hours) * 3600.0
+        update_payload = {
+            "dato": dt,
+            "oms": float(actual_value),
+            "temperature_2m": float(row.temp_max) if row.temp_max is not None else None,
+            "wind_gusts_10m": float(row.wind_max) if row.wind_max is not None else None,
+            "rain": float(row.precip_sum) if row.precip_sum is not None else None,
+            "sunshine_duration": sunshine_duration,
+            "ugedag": row.date.weekday(),
+            "ugenummer": row.date.isocalendar().week,
+            "måned": row.date.month,
+            "år": row.date.year,
+            "planday_hours": float(row.planday_hours) if row.planday_hours is not None else None,
+        }
+        operations.append(
+            UpdateOne(
+                {"dato": dt},
+                {
+                    "$set": {k: v for k, v in update_payload.items() if v is not None},
+                    "$setOnInsert": {
+                        "dato": dt,
+                        "lag1": None,
+                        "lag7": None,
+                        "ma7": None,
+                    },
+                },
+                upsert=True,
+            )
+        )
+    if not operations:
+        return
+    try:
+        client = MongoClient(settings.MONGO_URI)
+        collection = client[settings.MONGO_DB_NAME][settings.MONGO_DAILY_COLLECTION]
+        collection.bulk_write(operations, ordered=False)
+    except Exception as exc:  # pragma: no cover - afhænger af forbindelse
+        LOGGER.warning("Kunne ikke synce Planday-oms til Mongo: %s", exc)
+
+
 def _weather_to_serializable(frame: pd.DataFrame) -> list[dict]:
     if frame is None or frame.empty:
         return []
@@ -112,6 +166,9 @@ def log_forecast_event(
             weather_actual_map = get_historic_weather_map([row.date for row in sample_rows])
     except Exception as exc:  # pragma: no cover - afhænger af API
         LOGGER.warning("Kunne ikke hente omsætning fra Planday: %s", exc)
+
+    if actual_map:
+        _sync_planday_actuals_to_mongo(sample_rows, actual_map)
 
     rows_payload = _rows_to_serializable(sample_rows, actuals=actual_map, actual_weather=weather_actual_map)
     weather_subset = None
