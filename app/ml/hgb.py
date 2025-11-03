@@ -17,6 +17,8 @@ from sqlalchemy.exc import SQLAlchemyError
 from app.core.config import settings
 from app.services.db import get_engine
 
+_LAST_HISTORY_SOURCE: str | None = None
+
 _BASE_DIR = Path(__file__).resolve().parent
 _HGB_DIR = _BASE_DIR / "HGB"
 _MODEL_PATH = _HGB_DIR / "model_hgb_daily.pkl"
@@ -214,13 +216,21 @@ def _load_history_from_mongo() -> Optional[pd.DataFrame]:
 
 @lru_cache
 def _load_history_frame() -> pd.DataFrame:
+    global _LAST_HISTORY_SOURCE
     pg_frame = _load_history_from_postgres()
     if pg_frame is not None and not pg_frame.empty:
+        _LAST_HISTORY_SOURCE = "postgres"
         return pg_frame
     mongo_frame = _load_history_from_mongo()
     if mongo_frame is not None and not mongo_frame.empty:
+        _LAST_HISTORY_SOURCE = "mongo"
         return mongo_frame
+    _LAST_HISTORY_SOURCE = "local"
     return _load_history_from_file()
+
+
+def get_last_history_source() -> str | None:
+    return _LAST_HISTORY_SOURCE
 
 
 def _safe_float(value: Any, default: float = 0.0) -> float:

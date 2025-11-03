@@ -7,7 +7,12 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field, validator
 
 from app.core.config import settings
-from app.ml.hgb import get_hgb_feature_columns, get_hgb_history_dates, get_hgb_metrics
+from app.ml.hgb import (
+    get_hgb_feature_columns,
+    get_hgb_history_dates,
+    get_hgb_metrics,
+    get_last_history_source,
+)
 from app.services.forecast import ForecastResult, generate_forecast, generate_forecast_bundle
 
 router = APIRouter()
@@ -62,6 +67,7 @@ class HGBForecastResponse(BaseModel):
     metrics: Optional[dict[str, Any]] = None
     feature_columns: Optional[List[str]] = None
     history_coverage: Optional[HistoryCoverage] = None
+    history_source: Optional[str] = None
 
 
 def _to_day_forecasts(result: ForecastResult) -> List[DayForecast]:
@@ -182,6 +188,7 @@ def forecast_hgb(req: ForecastRequest) -> HGBForecastResponse:
     wage_pct = req.wage_pct if req.wage_pct is not None else settings.WAGE_PCT
     hourly = req.avg_hourly_wage if req.avg_hourly_wage is not None else settings.AVG_HOURLY_WAGE
     metrics, feature_columns, coverage = _gather_hgb_metadata()
+    history_source = get_last_history_source()
 
     return HGBForecastResponse(
         model_version=hgb_result.model_version,
@@ -193,4 +200,5 @@ def forecast_hgb(req: ForecastRequest) -> HGBForecastResponse:
         metrics=metrics,
         feature_columns=feature_columns,
         history_coverage=coverage,
+        history_source=history_source,
     )

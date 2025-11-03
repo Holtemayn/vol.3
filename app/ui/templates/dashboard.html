@@ -204,6 +204,7 @@
                 </div>
                 <div class="six columns" style="text-align:right;">
                     <div id="hgb-meta" class="badge">Model: HGB · venter…</div>
+                    <div id="hgb-source" class="badge" style="background:#1f2937;display:inline-block;margin-top:0.5rem;">Kilde: ukendt</div>
                     <div id="hgb-history"></div>
                 </div>
             </div>
@@ -261,6 +262,7 @@
         const hgbWarningsEl = document.getElementById("hgb-warnings");
         const hgbMetricsEl = document.getElementById("hgb-metrics");
         const hgbHistoryEl = document.getElementById("hgb-history");
+        const hgbSourceEl = document.getElementById("hgb-source");
 
         function formatNumber(value) {
             return new Intl.NumberFormat("da-DK", { maximumFractionDigits: 1 }).format(value);
@@ -380,6 +382,15 @@
             if (hgbMetaEl && payload) {
                 hgbMetaEl.textContent = `Model: ${payload.model_backend} · version ${payload.model_version}`;
             }
+            if (hgbSourceEl) {
+                const source = payload && payload.history_source ? payload.history_source : "ukendt";
+                const label =
+                    source === "postgres" ? "Kilde: Postgres" :
+                    source === "mongo" ? "Kilde: MongoDB" :
+                    source === "local" ? "Kilde: Lokal fil" :
+                    `Kilde: ${source}`;
+                hgbSourceEl.textContent = label;
+            }
             renderHgbWarnings(payload ? payload.warnings : []);
             renderHgbMetrics(payload ? payload.metrics : null);
             renderHgbHistory(payload ? payload.history_coverage : null, payload ? payload.feature_columns : null);
@@ -419,6 +430,9 @@
                 }
                 if (hgbHistoryEl) {
                     hgbHistoryEl.textContent = "";
+                }
+                if (hgbSourceEl) {
+                    hgbSourceEl.textContent = "Kilde: ukendt";
                 }
             }
         }
