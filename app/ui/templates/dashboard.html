@@ -74,6 +74,14 @@
         .chat-message .bubble { display: inline-block; padding: 0.6rem 0.9rem; border-radius: 12px; max-width: 85%; }
         .chat-message.user .bubble { background: #0F6CBD; color: #fff; }
         .chat-message.assistant .bubble { background: #fff; border: 1px solid #d1d1d6; }
+        #hgb-panel .metrics-table { width: 100%; border-collapse: collapse; margin-top: 0.75rem; }
+        #hgb-panel .metrics-table th, #hgb-panel .metrics-table td { padding: 0.5rem 0.6rem; border-bottom: 1px solid #e5e5ea; font-size: 0.85rem; text-align: left; }
+        #hgb-panel .metrics-table th { text-transform: uppercase; letter-spacing: 0.08em; font-weight: 600; color: rgba(15,23,42,0.65); background: rgba(15,107,189,0.05); }
+        #hgb-panel .metrics-note { margin-top: 0.5rem; font-size: 0.8rem; color: #4b5563; }
+        #hgb-metrics { margin-top: 1.1rem; }
+        #hgb-warnings .warning:last-child { margin-bottom: 0; }
+        #hgb-history { margin-top: 0.4rem; font-size: 0.85rem; color: #4b5563; }
+        #hgb-panel table { margin-top: 1rem; }
     </style>
 </head>
 <body>
@@ -188,6 +196,35 @@
             <div id="similar-results" class="similar-grid"></div>
         </section>
 
+        <section class="panel" id="hgb-panel">
+            <div class="row">
+                <div class="six columns">
+                    <h4>HGB-model (eksperimentel)</h4>
+                    <p>Gradient boosting modellen giver et alternativt bud baseret på historiske omsætningstal.</p>
+                </div>
+                <div class="six columns" style="text-align:right;">
+                    <div id="hgb-meta" class="badge">Model: HGB · venter…</div>
+                    <div id="hgb-history"></div>
+                </div>
+            </div>
+            <div id="hgb-warnings"></div>
+            <div class="table-wrapper">
+                <table id="hgb-table">
+                    <thead>
+                        <tr>
+                            <th>Dato</th>
+                            <th>Oms (HGB)</th>
+                            <th>Timer</th>
+                            <th>Planday</th>
+                            <th>Afvigelse</th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                </table>
+            </div>
+            <div id="hgb-metrics"></div>
+        </section>
+
         <section class="panel">
             <div class="row">
                 <div class="six columns">
@@ -219,6 +256,11 @@
         const modelMeta = document.getElementById("model-meta");
         const initialData = {{ initial | tojson }};
         const defaultHourly = {{ initial.avg_hourly_wage | default(0) }};
+        const hgbTableBody = document.querySelector("#hgb-table tbody");
+        const hgbMetaEl = document.getElementById("hgb-meta");
+        const hgbWarningsEl = document.getElementById("hgb-warnings");
+        const hgbMetricsEl = document.getElementById("hgb-metrics");
+        const hgbHistoryEl = document.getElementById("hgb-history");
 
         function formatNumber(value) {
             return new Intl.NumberFormat("da-DK", { maximumFractionDigits: 1 }).format(value);
@@ -226,6 +268,15 @@
 
         function formatCurrency(value) {
             return new Intl.NumberFormat("da-DK", { maximumFractionDigits: 0 }).format(value);
+        }
+
+        function buildForecastPayload(form) {
+            return {
+                start_date: form.start_date.value,
+                horizon_days: Number(form.horizon_days.value),
+                wage_pct: form.wage_pct.value ? Number(form.wage_pct.value) : null,
+                avg_hourly_wage: form.avg_hourly_wage.value ? Number(form.avg_hourly_wage.value) : null,
+            };
         }
 
         function renderWarnings(warnings) {
@@ -236,6 +287,140 @@
                 div.textContent = msg;
                 warningStack.appendChild(div);
             });
+        }
+
+        function renderHgbWarnings(warnings) {
+            if (!hgbWarningsEl) return;
+            hgbWarningsEl.innerHTML = "";
+            (warnings || []).forEach(message => {
+                const div = document.createElement("div");
+                div.className = "warning";
+                div.textContent = message;
+                hgbWarningsEl.appendChild(div);
+            });
+        }
+
+        function renderHgbMetrics(metrics) {
+            if (!hgbMetricsEl) return;
+            if (!metrics) {
+                hgbMetricsEl.innerHTML = "";
+                return;
+            }
+            const rows = [];
+            [
+                ["train", "Træning"],
+                ["test", "Test"],
+            ].forEach(([key, label]) => {
+                const entry = metrics[key];
+                if (!entry) return;
+                const mae = entry.MAE != null ? formatNumber(entry.MAE) : "—";
+                const rmse = entry.RMSE != null ? formatNumber(entry.RMSE) : "—";
+                const r2 = entry.R2 != null ? Number(entry.R2).toFixed(3) : "—";
+                rows.push(`
+                    <tr>
+                        <th>${label}</th>
+                        <td>${mae}</td>
+                        <td>${rmse}</td>
+                        <td>${r2}</td>
+                    </tr>
+                `);
+            });
+            const cutoff = metrics.cutoff_date ? `<div class="metrics-note">Cutoff: ${metrics.cutoff_date}</div>` : "";
+            if (!rows.length) {
+                hgbMetricsEl.innerHTML = cutoff;
+                return;
+            }
+            hgbMetricsEl.innerHTML = `
+                <table class="metrics-table">
+                    <thead>
+                        <tr>
+                            <th>Datasæt</th>
+                            <th>MAE</th>
+                            <th>RMSE</th>
+                            <th>R²</th>
+                        </tr>
+                    </thead>
+                    <tbody>${rows.join("")}</tbody>
+                </table>
+                ${cutoff}
+            `;
+        }
+
+        function renderHgbHistory(coverage, featureColumns) {
+            if (!hgbHistoryEl) return;
+            const parts = [];
+            if (coverage && coverage.start && coverage.end) {
+                const start = new Date(coverage.start);
+                const end = new Date(coverage.end);
+                const formatter = (value) => value.toLocaleDateString("da-DK", { day: "numeric", month: "short", year: "numeric" });
+                parts.push(`Historik ${formatter(start)} – ${formatter(end)}`);
+            }
+            if (Array.isArray(featureColumns) && featureColumns.length) {
+                parts.push(`Features (${featureColumns.length}): ${featureColumns.join(", ")}`);
+            }
+            hgbHistoryEl.textContent = parts.join(" · ");
+        }
+
+        function renderHgb(payload) {
+            if (!hgbTableBody) return;
+            const items = (payload && payload.items) || [];
+            hgbTableBody.innerHTML = "";
+            items.forEach(item => {
+                const tr = document.createElement("tr");
+                const diffClass = item.hours_diff > 1 ? "diff-positive" : item.hours_diff < -1 ? "diff-negative" : "";
+                tr.innerHTML = `
+                    <td>${new Date(item.date).toLocaleDateString("da-DK", { weekday: "short", day: "numeric", month: "short" })}</td>
+                    <td>${formatCurrency(item.revenue_pred)}</td>
+                    <td>${formatNumber(item.hours_recommended)}</td>
+                    <td>${item.planday_hours != null ? formatNumber(item.planday_hours) : "—"}</td>
+                    <td class="${diffClass}">${item.hours_diff != null ? formatNumber(item.hours_diff) : "—"}</td>
+                `;
+                hgbTableBody.appendChild(tr);
+            });
+            if (hgbMetaEl && payload) {
+                hgbMetaEl.textContent = `Model: ${payload.model_backend} · version ${payload.model_version}`;
+            }
+            renderHgbWarnings(payload ? payload.warnings : []);
+            renderHgbMetrics(payload ? payload.metrics : null);
+            renderHgbHistory(payload ? payload.history_coverage : null, payload ? payload.feature_columns : null);
+        }
+
+        async function loadHgbForecast(payload) {
+            if (!payload) return;
+            if (hgbMetaEl) {
+                hgbMetaEl.textContent = "Model: HGB · henter…";
+            }
+            renderHgbWarnings([]);
+            if (hgbMetricsEl) {
+                hgbMetricsEl.innerHTML = "";
+            }
+            try {
+                const response = await fetch("/forecast/hgb", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(payload),
+                });
+                if (!response.ok) {
+                    const text = await response.text();
+                    throw new Error(text || `HTTP ${response.status}`);
+                }
+                const data = await response.json();
+                renderHgb(data);
+            } catch (error) {
+                renderHgbWarnings([`Kunne ikke hente HGB-forecast: ${error.message}`]);
+                if (hgbMetaEl) {
+                    hgbMetaEl.textContent = "Model: HGB · fejl";
+                }
+                if (hgbTableBody) {
+                    hgbTableBody.innerHTML = "";
+                }
+                if (hgbMetricsEl) {
+                    hgbMetricsEl.innerHTML = "";
+                }
+                if (hgbHistoryEl) {
+                    hgbHistoryEl.textContent = "";
+                }
+            }
         }
 
         function renderTable(payload) {
@@ -371,12 +556,7 @@
         async function submitForm(event) {
             event.preventDefault();
             const form = event.target;
-            const payload = {
-                start_date: form.start_date.value,
-                horizon_days: Number(form.horizon_days.value),
-                wage_pct: form.wage_pct.value ? Number(form.wage_pct.value) : null,
-                avg_hourly_wage: form.avg_hourly_wage.value ? Number(form.avg_hourly_wage.value) : null,
-            };
+            const payload = buildForecastPayload(form);
 
             const button = form.querySelector("button[type=submit]");
             const originalLabel = button.textContent;
@@ -396,6 +576,7 @@
                 const data = await response.json();
                 renderTable(data);
                 loadLogs();
+                await loadHgbForecast(payload);
             } catch (error) {
                 renderWarnings([`Kunne ikke hente forecast: ${error.message}`]);
             } finally {
@@ -403,13 +584,18 @@
                 button.disabled = false;
             }
         }
-
-        document.getElementById("forecast-form").addEventListener("submit", submitForm);
+        const forecastForm = document.getElementById("forecast-form");
+        if (forecastForm) {
+            forecastForm.addEventListener("submit", submitForm);
+        }
         document.getElementById("refresh-log").addEventListener("click", () => loadLogs());
         document.getElementById("log-limit").addEventListener("change", () => loadLogs());
 
         renderTable(initialData);
         loadLogs();
+        if (forecastForm) {
+            loadHgbForecast(buildForecastPayload(forecastForm));
+        }
 
         const similarResultsEl = document.getElementById("similar-results");
         const similarSummaryEl = document.getElementById("similar-summary");
