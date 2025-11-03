@@ -5,7 +5,7 @@ pydantic
 pydantic-settings
 pandas
 joblib
-scikit-learn
+scikit-learn==1.4.1.post1
 xgboost
 python-dotenv
 requests
