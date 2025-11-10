@@ -51,8 +51,8 @@ class CalendarForecastRequest(BaseModel):
             horizon = int(value)
         except (TypeError, ValueError) as exc:
             raise ValueError("horizon_days must be an integer") from exc
-        if horizon < 7 or horizon > 60:
-            raise ValueError("horizon_days must be between 7 og 60")
+        if horizon < 7 or horizon > 120:
+            raise ValueError("horizon_days must be between 7 og 120")
         return horizon
 
     @validator("wage_pct", pre=True, always=True)
@@ -109,6 +109,7 @@ _mongo_config: Optional[MongoConfig] = None
 _mongo_client: Optional[MongoClient] = None
 _mongo_client_lock = threading.Lock()
 _growth_factor_log_cache: Set[Tuple[int, int]] = set()
+CLOSED_DATES = {(12, 24), (12, 25)}
 
 
 def _get_env(name: str, default: Optional[str] = None) -> Optional[str]:
@@ -157,10 +158,19 @@ def iso_parts(target_day: date) -> Tuple[int, int, int]:
     return iso_year, iso_week, iso_weekday
 
 
+def is_closed_day(day: date) -> bool:
+    if day.month == 1:
+        return True
+    if (day.month, day.day) in CLOSED_DATES:
+        return True
+    return False
+
+
 def build_candidate_dates(target_day: date) -> Dict[int, List[date]]:
     _, iso_week, iso_weekday = iso_parts(target_day)
     candidates: Dict[int, List[date]] = {}
-    for source_year in (target_day.year - 1, target_day.year - 2):
+    for years_back in (1, 2, 3):
+        source_year = target_day.year - years_back
         dates: List[date] = []
         for delta_week in range(-3, 4):
             week = iso_week + delta_week
@@ -262,12 +272,22 @@ def fetch_revenues_mongo(
 
 
 def growth_factor_for(source_year: int, target_year: int) -> float:
-    growth_map: Dict[Tuple[int, int], float] = {
+    combination_map: Dict[Tuple[int, int], float] = {
         (2024, 2025): 1.25,
         (2023, 2025): 1.56,
+        (2025, 2026): 1.10,
+        (2024, 2026): 1.25,
+        (2023, 2026): 1.56,
     }
-    if (source_year, target_year) in growth_map:
-        return growth_map[(source_year, target_year)]
+    year_weights: Dict[int, float] = {
+        2023: 1.56,
+        2024: 1.25,
+        2025: 1.10,
+    }
+    if (source_year, target_year) in combination_map:
+        return combination_map[(source_year, target_year)]
+    if source_year in year_weights:
+        return year_weights[source_year]
     combination = (source_year, target_year)
     if combination not in _growth_factor_log_cache:
         logger.info(
@@ -324,7 +344,23 @@ def make_daily_items(
 
     for offset in range(horizon_days):
         target_day = start_date + timedelta(days=offset)
-        dates_by_year = candidate_map[target_day]
+        if is_closed_day(target_day):
+            iso_year, iso_week, iso_weekday = iso_parts(target_day)
+            items.append(
+                DailyItem(
+                    date=target_day,
+                    iso_year=iso_year,
+                    iso_week=iso_week,
+                    iso_weekday=iso_weekday,
+                    forecast=None,
+                    wage=None,
+                    n_candidates=0,
+                    n_hits_prev1=0,
+                    n_hits_prev2=0,
+                )
+            )
+            continue
+        dates_by_year = candidate_map.get(target_day, {})
         forecast_value, n_candidates, hits_prev1, hits_prev2 = forecast_for_day(
             target_day, revenues_map, dates_by_year
         )
@@ -405,6 +441,9 @@ def calculate_calendar_forecast(
 
     for offset in range(horizon_days):
         target_day = start_date + timedelta(days=offset)
+        if is_closed_day(target_day):
+            candidate_map[target_day] = {}
+            continue
         candidates = build_candidate_dates(target_day)
         candidate_map[target_day] = candidates
         for source_year, dates in candidates.items():
